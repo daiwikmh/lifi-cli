@@ -1,21 +1,41 @@
 {
   "name": "lifi-cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "LI.FI CLI — bridge, swap, earn, and bet from the terminal. For humans and agents.",
-  "bin": { "lifi": "./bin/lifi.js" },
+  "bin": {
+    "lifi-cli": "./bin/lifi.js"
+  },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
-    ".":         { "import": "./dist/index.js", "require": "./dist/index.cjs" },
-    "./bridge":  { "import": "./dist/core/bridge/index.js" },
-    "./swap":    { "import": "./dist/core/swap/index.js" },
-    "./earn":    { "import": "./dist/core/earn/index.js" },
-    "./markets": { "import": "./dist/core/markets/index.js" },
-    "./agent":   { "import": "./dist/core/agent/index.js" },
-    "./mcp":     { "import": "./dist/mcp/server.js" }
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./bridge": {
+      "import": "./dist/core/bridge/index.js"
+    },
+    "./swap": {
+      "import": "./dist/core/swap/index.js"
+    },
+    "./earn": {
+      "import": "./dist/core/earn/index.js"
+    },
+    "./markets": {
+      "import": "./dist/core/markets/index.js"
+    },
+    "./agent": {
+      "import": "./dist/core/agent/index.js"
+    },
+    "./mcp": {
+      "import": "./dist/mcp/server.js"
+    }
   },
-  "files": ["dist", "bin"],
+  "files": [
+    "dist",
+    "bin"
+  ],
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
@@ -24,7 +44,16 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
-  "keywords": ["lifi", "defi", "cli", "bridge", "swap", "earn", "yield", "polymarket"],
+  "keywords": [
+    "lifi",
+    "defi",
+    "cli",
+    "bridge",
+    "swap",
+    "earn",
+    "yield",
+    "polymarket"
+  ],
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
