@@ -1,15 +1,4 @@
-import type { ChainId, Address, TxHash } from '../../types/index.js'
-
-export interface Protocol {
-  name: string
-  symbol: string
-  vaultToken: Address
-  underlyingToken: string
-  chainId: ChainId
-  apy?: number
-  tvl?: number
-  category: 'vault' | 'lending' | 'staking' | 'yield'
-}
+import type { ChainId, Address } from '../../types/index.js'
 
 export interface EarnParams {
   protocol: string
@@ -37,12 +26,4 @@ export interface EarnQuote {
     chainId: ChainId
   }
   approvalAddress?: Address
-}
-
-export interface PortfolioPosition {
-  protocol: string
-  token: string
-  balance: string
-  chainId: ChainId
-  apy?: number
 }

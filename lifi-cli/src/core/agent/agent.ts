@@ -4,7 +4,7 @@ import { printAgentBanner } from '../../display/banner.js'
 import { createOpenRouterClient } from '../../api/openrouter/index.js'
 import { getBridgeQuote } from '../bridge/index.js'
 import { getSwapQuote } from '../swap/index.js'
-import { getEarnQuote, listProtocols } from '../earn/index.js'
+import { getEarnQuote, fetchVaults, fetchEarnProtocols, fetchPortfolio } from '../earn/index.js'
 import { getMarkets } from '../markets/index.js'
 import { getKalshiMarkets } from '../kalshi/index.js'
 import { getManifoldMarkets } from '../manifold/index.js'
@@ -30,10 +30,17 @@ async function dispatchTool(name: string, args: Record<string, unknown>): Promis
         const q = await getEarnQuote(args as unknown as Parameters<typeof getEarnQuote>[0])
         return JSON.stringify(q, null, 2)
       }
+      case 'list_earn_vaults': {
+        const result = await fetchVaults(args as Parameters<typeof fetchVaults>[0])
+        return JSON.stringify(result, null, 2)
+      }
       case 'list_earn_protocols': {
-        const chainId = args.chain ? CHAIN_IDS[String(args.chain).toLowerCase()] : undefined
-        const protocols = listProtocols({ chain: chainId, category: args.category as string | undefined })
+        const protocols = await fetchEarnProtocols()
         return JSON.stringify(protocols, null, 2)
+      }
+      case 'get_earn_portfolio': {
+        const portfolio = await fetchPortfolio(args.userAddress as string)
+        return JSON.stringify(portfolio, null, 2)
       }
       case 'list_markets': {
         const markets = await getMarkets(args.query as string | undefined, (args.limit as number) ?? 20)

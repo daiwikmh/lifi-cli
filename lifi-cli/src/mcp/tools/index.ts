@@ -11,6 +11,6 @@ export interface McpToolDef {
 
 export { bridgeTool } from './bridge.tool.js'
 export { swapTool } from './swap.tool.js'
-export { earnQuoteTool, earnProtocolsTool } from './earn.tool.js'
+export { earnQuoteTool, earnVaultsTool, earnProtocolsTool } from './earn.tool.js'
 export { listMarketsTool, getMarketTool } from './markets.tool.js'
 export { statusTool } from './status.tool.js'

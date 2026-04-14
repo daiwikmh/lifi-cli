@@ -59,14 +59,42 @@ export const AGENT_TOOLS: AgentTool[] = [
   {
     type: 'function',
     function: {
-      name: 'list_earn_protocols',
-      description: 'List all yield protocols supported by LI.FI Composer',
+      name: 'list_earn_vaults',
+      description: 'List yield vaults available on LI.FI Earn with live APY and TVL',
       parameters: {
         type: 'object',
         properties: {
-          chain: { type: 'string', description: 'Filter by chain name or ID (optional)' },
+          chainId: { type: 'number', description: 'Filter by chain ID (optional)' },
+          protocol: { type: 'string', description: 'Filter by protocol slug (optional)' },
+          underlyingToken: { type: 'string', description: 'Filter by underlying token symbol (optional)' },
           category: { type: 'string', enum: ['vault', 'lending', 'staking', 'yield'], description: 'Filter by category (optional)' },
+          limit: { type: 'number', description: 'Max results (default 20)' },
         },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_earn_protocols',
+      description: 'List protocols with active vaults on LI.FI Earn',
+      parameters: {
+        type: 'object',
+        properties: {},
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_earn_portfolio',
+      description: 'Get all active DeFi positions (yield deposits) for a wallet address',
+      parameters: {
+        type: 'object',
+        properties: {
+          userAddress: { type: 'string', description: 'Wallet address (0x...)' },
+        },
+        required: ['userAddress'],
       },
     },
   },

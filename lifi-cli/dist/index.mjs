@@ -159,138 +159,39 @@ async function getSwapQuote(params) {
   };
 }
 
-// src/core/earn/protocols.ts
-var PROTOCOLS = [
-  // Morpho vaults — Base
-  {
-    name: "Morpho USDC (Base)",
-    symbol: "morpho-usdc",
-    vaultToken: "0x7BfA7C4f149E7415b73bdeDfe609237e29CBF34A",
-    underlyingToken: "USDC",
-    chainId: 8453,
-    category: "vault"
-  },
-  {
-    name: "Morpho WETH (Base)",
-    symbol: "morpho-weth",
-    vaultToken: "0xa0E430870c4604CcfC7B38Ca7845B1FF653D0ff1",
-    underlyingToken: "WETH",
-    chainId: 8453,
-    category: "vault"
-  },
-  // Aave V3 — Base
-  {
-    name: "Aave V3 USDC (Base)",
-    symbol: "aave-usdc-base",
-    vaultToken: "0x4e65fE4DbA92790696d040ac24Aa414708F5c0AB",
-    underlyingToken: "USDC",
-    chainId: 8453,
-    category: "lending"
-  },
-  // Aave V3 — Ethereum
-  {
-    name: "Aave V3 USDC (Ethereum)",
-    symbol: "aave-usdc-eth",
-    vaultToken: "0x98C23E9d8f34FEFb1B7BD6a91B7FF122F4e16F5c",
-    underlyingToken: "USDC",
-    chainId: 1,
-    category: "lending"
-  },
-  {
-    name: "Aave V3 WETH (Ethereum)",
-    symbol: "aave-weth-eth",
-    vaultToken: "0x4d5F47FA6A74757f35C14fD3a6Ef8E3C9BC514E8",
-    underlyingToken: "WETH",
-    chainId: 1,
-    category: "lending"
-  },
-  // Liquid staking — Ethereum
-  {
-    name: "Lido wstETH",
-    symbol: "lido-wsteth",
-    vaultToken: "0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0",
-    underlyingToken: "ETH",
-    chainId: 1,
-    category: "staking"
-  },
-  {
-    name: "EtherFi eETH",
-    symbol: "etherfi-eeth",
-    vaultToken: "0x35fA164735182de50811E8e2E824cFb9B6118ac2",
-    underlyingToken: "ETH",
-    chainId: 1,
-    category: "staking"
-  },
-  {
-    name: "EtherFi weETH",
-    symbol: "etherfi-weeth",
-    vaultToken: "0xCd5fE23C85820F7B72D0926FC9b05b43E359b7ee",
-    underlyingToken: "ETH",
-    chainId: 1,
-    category: "staking"
-  },
-  // Yield — Ethereum
-  {
-    name: "Pendle PT-USDC",
-    symbol: "pendle-usdc",
-    vaultToken: "0x808507121B80c02388fAd14726482e061B8da827",
-    underlyingToken: "USDC",
-    chainId: 1,
-    category: "yield"
-  },
-  {
-    name: "Ethena USDe",
-    symbol: "ethena-usde",
-    vaultToken: "0x4c9EDD5852cd905f086C759E8383e09bff1E68B3",
-    underlyingToken: "USDC",
-    chainId: 1,
-    category: "yield"
-  },
-  {
-    name: "Ethena sUSDe",
-    symbol: "ethena-susde",
-    vaultToken: "0x9D39A5DE30e57443BfF2A8307A4256c8797A3497",
-    underlyingToken: "USDe",
-    chainId: 1,
-    category: "yield"
-  },
-  // Seamless — Base
-  {
-    name: "Seamless USDC (Base)",
-    symbol: "seamless-usdc",
-    vaultToken: "0x13A13869B814Be8F13B86e9875aB51bda882E391",
-    underlyingToken: "USDC",
-    chainId: 8453,
-    category: "lending"
-  },
-  // Euler — Ethereum
-  {
-    name: "Euler USDC",
-    symbol: "euler-usdc",
-    vaultToken: "0xd9a442856C234a39a81a089C06451EBAa4306a72",
-    underlyingToken: "USDC",
-    chainId: 1,
-    category: "lending"
-  },
-  // Kinetiq — staking
-  {
-    name: "Kinetiq kHYPE",
-    symbol: "kinetiq-khype",
-    vaultToken: "0x1Ecd4e50Cd792B6B4628de5AC38fAA0f5cf05682",
-    underlyingToken: "HYPE",
-    chainId: 999,
-    category: "staking"
-  }
-];
-function listProtocols(filter) {
-  return PROTOCOLS.filter((p) => {
-    if (filter?.chain && p.chainId !== filter.chain) return false;
-    if (filter?.category && p.category !== filter.category) return false;
-    return true;
+// src/api/lifi/earn.ts
+import axios2 from "axios";
+var EARN_API_BASE = "https://earn.li.fi/v1/earn";
+function createEarnClient() {
+  const apiKey = getConfigValue("lifiApiKey");
+  return axios2.create({
+    baseURL: EARN_API_BASE,
+    headers: {
+      "Content-Type": "application/json",
+      ...apiKey ? { "x-lifi-api-key": apiKey } : {}
+    }
   });
 }
-function getProtocolBySymbol(symbol) {
-  return PROTOCOLS.find((p) => p.symbol.toLowerCase() === symbol.toLowerCase());
+var client2 = createEarnClient();
+async function listVaults(params) {
+  const { data } = await client2.get("/vaults", { params });
+  return data;
+}
+async function getVault(chainId, address) {
+  const { data } = await client2.get(`/vaults/${chainId}/${address}`);
+  return data;
+}
+async function listEarnChains() {
+  const { data } = await client2.get("/chains");
+  return data.chains ?? data;
+}
+async function listEarnProtocols() {
+  const { data } = await client2.get("/protocols");
+  return data.protocols ?? data;
+}
+async function getPortfolio(userAddress) {
+  const { data } = await client2.get(`/portfolio/${userAddress}/positions`);
+  return data;
 }
 
 // src/core/earn/earn.ts
@@ -301,39 +202,67 @@ function resolveChainId3(chain) {
   return id;
 }
 async function getEarnQuote(params) {
-  const protocol = getProtocolBySymbol(params.protocol);
-  if (!protocol) {
-    throw new Error(`Unknown protocol: ${params.protocol}. Run 'lifi earn protocols' to list supported protocols.`);
-  }
   const chainId = resolveChainId3(params.chain);
+  let vault;
+  if (params.protocol.startsWith("0x")) {
+    vault = await getVault(chainId, params.protocol);
+  } else {
+    const { vaults } = await listVaults({
+      chainId,
+      protocol: params.protocol,
+      underlyingToken: params.token,
+      limit: 1
+    });
+    vault = vaults[0];
+  }
+  if (!vault) {
+    throw new Error(
+      `No vault found for protocol "${params.protocol}" on chain ${chainId}. Run 'lifi earn vaults' to see available vaults.`
+    );
+  }
   const response = await getQuote({
     fromChain: chainId,
-    toChain: protocol.chainId,
+    toChain: vault.chainId,
     fromToken: params.token,
-    toToken: protocol.vaultToken,
+    toToken: vault.vaultToken.address,
     fromAmount: params.amount,
     fromAddress: params.fromAddress,
     toAddress: params.fromAddress
   });
   return {
-    protocol: protocol.name,
+    protocol: vault.name,
     fromToken: params.token,
-    toToken: protocol.vaultToken,
+    toToken: vault.vaultToken.symbol,
     fromAmount: response.estimate.fromAmount,
     toAmount: response.estimate.toAmount,
-    estimatedApy: protocol.apy,
+    estimatedApy: vault.apy,
     estimatedDuration: response.estimate.executionDuration,
     gasCostUSD: response.estimate.gasCosts?.[0]?.amount ?? "0",
     transactionRequest: response.transactionRequest,
     approvalAddress: response.estimate.approvalAddress
   };
 }
+async function fetchVaults(params) {
+  return listVaults(params);
+}
+async function fetchVault(chainId, address) {
+  return getVault(chainId, address);
+}
+async function fetchEarnChains() {
+  return listEarnChains();
+}
+async function fetchEarnProtocols() {
+  return listEarnProtocols();
+}
+async function fetchPortfolio(userAddress) {
+  return getPortfolio(userAddress);
+}
 
 // src/api/polymarket/client.ts
-import axios2 from "axios";
+import axios3 from "axios";
 var POLYMARKET_GAMMA_API = "https://gamma-api.polymarket.com";
 function createGammaClient() {
-  return axios2.create({ baseURL: POLYMARKET_GAMMA_API });
+  return axios3.create({ baseURL: POLYMARKET_GAMMA_API });
 }
 
 // src/api/polymarket/endpoints.ts
@@ -459,11 +388,11 @@ function createOpenRouterClient() {
 }
 
 // src/api/kalshi/client.ts
-import axios3 from "axios";
+import axios4 from "axios";
 function createKalshiClient() {
   const apiKey = getConfigValue("kalshiApiKey");
   if (!apiKey) throw new Error("Kalshi API key required. Run: lifi config set --kalshi-key <key>  (get one at kalshi.com/api)");
-  return axios3.create({
+  return axios4.create({
     baseURL: "https://trading-api.kalshi.com/trade-api/v2",
     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` }
   });
@@ -471,8 +400,8 @@ function createKalshiClient() {
 
 // src/api/kalshi/endpoints.ts
 async function fetchKalshiMarkets(params = {}) {
-  const client2 = createKalshiClient();
-  const { data } = await client2.get("/markets", {
+  const client3 = createKalshiClient();
+  const { data } = await client3.get("/markets", {
     params: { limit: params.limit ?? 20, status: params.status ?? "open", ...params }
   });
   return data;
@@ -502,8 +431,8 @@ async function getKalshiMarkets(query, limit = 20) {
 }
 
 // src/api/manifold/client.ts
-import axios4 from "axios";
-var manifoldClient = axios4.create({
+import axios5 from "axios";
+var manifoldClient = axios5.create({
   baseURL: "https://api.manifold.markets",
   headers: { "Content-Type": "application/json" }
 });
@@ -600,14 +529,42 @@ var AGENT_TOOLS = [
   {
     type: "function",
     function: {
-      name: "list_earn_protocols",
-      description: "List all yield protocols supported by LI.FI Composer",
+      name: "list_earn_vaults",
+      description: "List yield vaults available on LI.FI Earn with live APY and TVL",
       parameters: {
         type: "object",
         properties: {
-          chain: { type: "string", description: "Filter by chain name or ID (optional)" },
-          category: { type: "string", enum: ["vault", "lending", "staking", "yield"], description: "Filter by category (optional)" }
+          chainId: { type: "number", description: "Filter by chain ID (optional)" },
+          protocol: { type: "string", description: "Filter by protocol slug (optional)" },
+          underlyingToken: { type: "string", description: "Filter by underlying token symbol (optional)" },
+          category: { type: "string", enum: ["vault", "lending", "staking", "yield"], description: "Filter by category (optional)" },
+          limit: { type: "number", description: "Max results (default 20)" }
         }
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_earn_protocols",
+      description: "List protocols with active vaults on LI.FI Earn",
+      parameters: {
+        type: "object",
+        properties: {}
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_earn_portfolio",
+      description: "Get all active DeFi positions (yield deposits) for a wallet address",
+      parameters: {
+        type: "object",
+        properties: {
+          userAddress: { type: "string", description: "Wallet address (0x...)" }
+        },
+        required: ["userAddress"]
       }
     }
   },
@@ -688,10 +645,17 @@ async function dispatchTool(name, args) {
         const q = await getEarnQuote(args);
         return JSON.stringify(q, null, 2);
       }
+      case "list_earn_vaults": {
+        const result = await fetchVaults(args);
+        return JSON.stringify(result, null, 2);
+      }
       case "list_earn_protocols": {
-        const chainId = args.chain ? CHAIN_IDS[String(args.chain).toLowerCase()] : void 0;
-        const protocols = listProtocols({ chain: chainId, category: args.category });
+        const protocols = await fetchEarnProtocols();
         return JSON.stringify(protocols, null, 2);
+      }
+      case "get_earn_portfolio": {
+        const portfolio = await fetchPortfolio(args.userAddress);
+        return JSON.stringify(portfolio, null, 2);
       }
       case "list_markets": {
         const markets = await getMarkets(args.query, args.limit ?? 20);
@@ -717,7 +681,7 @@ async function dispatchTool(name, args) {
   }
 }
 async function runAgent(config) {
-  const client2 = createOpenRouterClient();
+  const client3 = createOpenRouterClient();
   const messages = [
     { role: "system", content: config.systemPrompt ?? DEFAULT_SYSTEM }
   ];
@@ -728,7 +692,7 @@ async function runAgent(config) {
     const userInput = await prompt();
     if (!userInput.trim()) continue;
     messages.push({ role: "user", content: userInput });
-    let response = await client2.chat.completions.create({
+    let response = await client3.chat.completions.create({
       model: config.model,
       messages,
       tools: AGENT_TOOLS,
@@ -744,7 +708,7 @@ async function runAgent(config) {
         const result = await dispatchTool(call.function.name, args);
         messages.push({ role: "tool", tool_call_id: call.id, content: result });
       }
-      response = await client2.chat.completions.create({
+      response = await client3.chat.completions.create({
         model: config.model,
         messages,
         tools: AGENT_TOOLS,
@@ -852,8 +816,8 @@ async function executeTransaction(tx, walletName) {
   const privateKey = await getWalletKey(walletName);
   const account = privateKeyToAccount2(privateKey);
   const chain = getViemChain(tx.chainId);
-  const client2 = createWalletClient({ account, chain, transport: http() });
-  const hash = await client2.sendTransaction({
+  const client3 = createWalletClient({ account, chain, transport: http() });
+  const hash = await client3.sendTransaction({
     to: tx.to,
     data: tx.data,
     value: tx.value,
@@ -891,21 +855,23 @@ export {
   DEFAULT_CHAIN,
   LIFI_API_BASE,
   NATIVE_TOKEN,
-  PROTOCOLS,
   WALLETS_DIR,
   createWallet,
   ensureAllowance,
   executeTransaction,
+  fetchEarnChains,
+  fetchEarnProtocols,
+  fetchPortfolio,
+  fetchVault,
+  fetchVaults,
   getBridgeQuote,
   getConfigValue,
   getEarnQuote,
   getMarketBySlug,
   getMarkets,
-  getProtocolBySymbol,
   getSwapQuote,
   getWalletKey,
   importWallet,
-  listProtocols,
   listWallets,
   loadConfig,
   resolveChain,

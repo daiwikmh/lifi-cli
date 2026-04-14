@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 import {
+  fetchEarnProtocols,
+  fetchVaults,
   getBridgeQuote,
   getEarnQuote,
   getMarketBySlug,
   getMarkets,
   getStatus,
-  getSwapQuote,
-  listProtocols
-} from "./chunk-AOTGOO3E.mjs";
+  getSwapQuote
+} from "./chunk-PHS2237J.mjs";
 
 // src/mcp/server.ts
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -61,12 +62,12 @@ var swapTool = {
 // src/mcp/tools/earn.tool.ts
 var earnQuoteTool = {
   name: "lifi_earn_quote",
-  description: "Get a quote to deposit tokens into a yield protocol via LI.FI Composer",
+  description: "Get a quote to deposit tokens into a yield vault via LI.FI Earn",
   inputSchema: {
     type: "object",
     properties: {
-      protocol: { type: "string", description: "Protocol symbol (e.g. morpho-usdc, aave-usdc)" },
-      token: { type: "string", description: "Token to deposit" },
+      protocol: { type: "string", description: "Protocol slug (e.g. morpho) or vault address (0x...)" },
+      token: { type: "string", description: "Token to deposit (symbol or address)" },
       amount: { type: "string", description: "Amount in smallest unit" },
       chain: { type: "string", description: "Chain name or ID" },
       fromAddress: { type: "string", description: "Wallet address" }
@@ -78,17 +79,34 @@ var earnQuoteTool = {
     return { content: [{ type: "text", text: JSON.stringify(quote, null, 2) }] };
   }
 };
-var earnProtocolsTool = {
-  name: "lifi_earn_protocols",
-  description: "List all yield protocols supported by LI.FI Composer",
+var earnVaultsTool = {
+  name: "lifi_earn_vaults",
+  description: "List available yield vaults from the LI.FI Earn API",
   inputSchema: {
     type: "object",
     properties: {
-      category: { type: "string", enum: ["vault", "lending", "staking", "yield"] }
+      chainId: { type: "number", description: "Filter by chain ID" },
+      protocol: { type: "string", description: "Filter by protocol slug" },
+      underlyingToken: { type: "string", description: "Filter by underlying token symbol" },
+      category: { type: "string", enum: ["vault", "lending", "staking", "yield"] },
+      limit: { type: "number", description: "Max results (default 20)" },
+      offset: { type: "number", description: "Pagination offset" }
     }
   },
   async handler(args) {
-    const protocols = listProtocols({ category: args.category });
+    const result = await fetchVaults(args);
+    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+  }
+};
+var earnProtocolsTool = {
+  name: "lifi_earn_protocols",
+  description: "List protocols with active vaults on LI.FI Earn",
+  inputSchema: {
+    type: "object",
+    properties: {}
+  },
+  async handler() {
+    const protocols = await fetchEarnProtocols();
     return { content: [{ type: "text", text: JSON.stringify(protocols, null, 2) }] };
   }
 };
@@ -149,6 +167,7 @@ var ALL_TOOLS = [
   bridgeTool,
   swapTool,
   earnQuoteTool,
+  earnVaultsTool,
   earnProtocolsTool,
   listMarketsTool,
   getMarketTool,
@@ -183,4 +202,4 @@ async function startMcpServer() {
 export {
   startMcpServer
 };
-//# sourceMappingURL=server-3YFM74E3.mjs.map
+//# sourceMappingURL=server-W5YCJ5GO.mjs.map

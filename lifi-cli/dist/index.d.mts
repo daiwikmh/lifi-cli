@@ -112,16 +112,59 @@ interface SwapResult {
 
 declare function getSwapQuote(params: SwapParams): Promise<SwapQuote>;
 
-interface Protocol {
+interface Vault {
+    chainId: number;
+    address: string;
     name: string;
-    symbol: string;
-    vaultToken: Address;
-    underlyingToken: string;
-    chainId: ChainId;
-    apy?: number;
-    tvl?: number;
-    category: 'vault' | 'lending' | 'staking' | 'yield';
+    protocol: string;
+    underlyingToken: {
+        symbol: string;
+        address: string;
+        decimals: number;
+    };
+    vaultToken: {
+        symbol: string;
+        address: string;
+        decimals: number;
+    };
+    apy: number;
+    tvl: number;
+    category: string;
 }
+interface VaultListParams {
+    chainId?: number;
+    protocol?: string;
+    underlyingToken?: string;
+    category?: string;
+    limit?: number;
+    offset?: number;
+}
+interface VaultListResponse {
+    vaults: Vault[];
+    total: number;
+    limit: number;
+    offset: number;
+}
+interface EarnChain {
+    id: number;
+    name: string;
+    vaultCount: number;
+}
+interface EarnProtocol {
+    name: string;
+    slug: string;
+    vaultCount: number;
+}
+interface Position {
+    vault: Vault;
+    balance: string;
+    balanceUSD: number;
+}
+interface PortfolioResponse {
+    positions: Position[];
+    totalUSD: number;
+}
+
 interface EarnParams {
     protocol: string;
     token: string;
@@ -148,22 +191,13 @@ interface EarnQuote {
     };
     approvalAddress?: Address;
 }
-interface PortfolioPosition {
-    protocol: string;
-    token: string;
-    balance: string;
-    chainId: ChainId;
-    apy?: number;
-}
 
 declare function getEarnQuote(params: EarnParams): Promise<EarnQuote>;
-
-declare const PROTOCOLS: Protocol[];
-declare function listProtocols(filter?: {
-    chain?: number;
-    category?: string;
-}): Protocol[];
-declare function getProtocolBySymbol(symbol: string): Protocol | undefined;
+declare function fetchVaults(params?: VaultListParams): Promise<VaultListResponse>;
+declare function fetchVault(chainId: number, address: string): Promise<Vault>;
+declare function fetchEarnChains(): Promise<EarnChain[]>;
+declare function fetchEarnProtocols(): Promise<EarnProtocol[]>;
+declare function fetchPortfolio(userAddress: string): Promise<PortfolioResponse>;
 
 interface Market {
     id: string;
@@ -251,4 +285,4 @@ declare const CONFIG_DIR: string;
 declare const CONFIG_FILE: string;
 declare const WALLETS_DIR: string;
 
-export { AGENT_TOOLS, type Address, type AgentConfig, type AgentMessage, type AgentTool, type BridgeParams, type BridgeQuote, type BridgeResult, CHAIN_IDS, CHAIN_NAMES, CONFIG_DIR, CONFIG_FILE, type Chain, type ChainId, DEFAULT_CHAIN, type EarnParams, type EarnQuote, type ExecuteResult, type GlobalOptions, LIFI_API_BASE, type Market, type MarketOrder, NATIVE_TOKEN, PROTOCOLS, type PolymarketPosition, type PortfolioPosition, type Protocol, type SwapParams, type SwapQuote, type SwapResult, type Token, type TokenSymbol, type TransactionRequest, type TxHash, WALLETS_DIR, type Wallet, type WalletStore, createWallet, ensureAllowance, executeTransaction, getBridgeQuote, getConfigValue, getEarnQuote, getMarketBySlug, getMarkets, getProtocolBySymbol, getSwapQuote, getWalletKey, importWallet, listProtocols, listWallets, loadConfig, resolveChain, runAgent, saveConfig };
+export { AGENT_TOOLS, type Address, type AgentConfig, type AgentMessage, type AgentTool, type BridgeParams, type BridgeQuote, type BridgeResult, CHAIN_IDS, CHAIN_NAMES, CONFIG_DIR, CONFIG_FILE, type Chain, type ChainId, DEFAULT_CHAIN, type EarnChain, type EarnParams, type EarnProtocol, type EarnQuote, type ExecuteResult, type GlobalOptions, LIFI_API_BASE, type Market, type MarketOrder, NATIVE_TOKEN, type PolymarketPosition, type PortfolioResponse, type SwapParams, type SwapQuote, type SwapResult, type Token, type TokenSymbol, type TransactionRequest, type TxHash, type Vault, WALLETS_DIR, type Wallet, type WalletStore, createWallet, ensureAllowance, executeTransaction, fetchEarnChains, fetchEarnProtocols, fetchPortfolio, fetchVault, fetchVaults, getBridgeQuote, getConfigValue, getEarnQuote, getMarketBySlug, getMarkets, getSwapQuote, getWalletKey, importWallet, listWallets, loadConfig, resolveChain, runAgent, saveConfig };
