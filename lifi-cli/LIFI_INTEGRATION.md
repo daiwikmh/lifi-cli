@@ -1,173 +1,212 @@
-# How We Use LI.FI
+# LI.FI Integration Details
 
-## Overview
+## Two APIs, one CLI
 
-This CLI is built on two LI.FI surfaces:
-
-1. **LI.FI Routing API** — for bridge and swap quotes
-2. **LI.FI Composer** — for yield deposits (Morpho, Aave, Lido, Ethena, etc.)
-
-Both use the **same single endpoint**: `GET https://li.quest/v1/quote`
-
-The distinction is entirely in what you pass as `toToken`. If it's a DEX token — you get a swap. If it's a vault or staking token from a supported protocol — LI.FI automatically routes it through Composer.
+| API | Base URL | Used for |
+|---|---|---|
+| LI.FI Routing API | `https://li.quest/v1` | bridge, swap, earn quotes, tx status |
+| LI.FI Earn API | `https://earn.li.fi/v1/earn` | vault discovery, protocols list, portfolio |
 
 ---
 
-## The One Endpoint
+## 1. Routing API — the one endpoint
 
 ```
 GET https://li.quest/v1/quote
 ```
 
+Everything — bridge, swap, and Composer yield deposits — goes through this single endpoint.
+The behavior changes entirely based on what you pass as `toToken`.
+
+| `toToken` value | What LI.FI does |
+|---|---|
+| A normal token (USDC, ETH) | Routes a swap or bridge |
+| A vault/staking contract address | Activates Composer — bundles swap + deposit into one tx |
+
+**Parameters:**
+
 | Parameter | Description |
 |---|---|
-| `fromChain` | Source chain ID (e.g. `1` for Ethereum, `8453` for Base) |
+| `fromChain` | Source chain ID (e.g. `8453` for Base) |
 | `toChain` | Destination chain ID |
-| `fromToken` | Token address or symbol to send |
-| `toToken` | Token address or symbol to receive |
-| `fromAmount` | Amount in smallest unit (wei for ETH, 1e6 for 1 USDC) |
+| `fromToken` | Token symbol or address to send |
+| `toToken` | Token symbol, address, or vault contract address |
+| `fromAmount` | Amount in smallest unit (e.g. `100000000` for 100 USDC) |
 | `fromAddress` | Sender wallet address |
-| `toAddress` | Recipient address (defaults to `fromAddress`) |
-| `slippage` | Slippage tolerance (e.g. `0.005` = 0.5%) |
+| `toAddress` | Recipient (defaults to `fromAddress`) |
+| `slippage` | Slippage tolerance, e.g. `0.005` = 0.5% |
 
-The response includes:
-- `estimate` — amounts, gas cost, duration
-- `transactionRequest` — a ready-to-sign EVM transaction object
-- `estimate.approvalAddress` — address to approve if sending an ERC-20
+**Response key fields:**
+
+```ts
+{
+  estimate: {
+    fromAmount: string,
+    toAmount: string,
+    toAmountMin: string,
+    approvalAddress: string,   // ERC-20 approval target if needed
+    executionDuration: number, // seconds
+    gasCosts: [{ amount, amountUSD, token }]
+  },
+  transactionRequest: {
+    to: string,       // LI.FI diamond contract
+    from: string,
+    data: string,     // encoded calldata
+    value: string,    // ETH value (0 for ERC-20 sends)
+    gasLimit: string,
+    chainId: number
+  }
+}
+```
 
 ---
 
-## Bridge / Swap Flow
+## 2. Earn API — vault discovery
 
 ```
-User runs: lifi bridge --from ETH --to USDC --from-chain ethereum --to-chain base
-                                 |
-                    src/core/bridge/bridge.ts
-                    getBridgeQuote()
-                                 |
-                    GET /v1/quote
-                    fromChain=1, toChain=8453
-                    fromToken=ETH, toToken=USDC
-                                 |
-                    LI.FI picks the best bridge route
-                    (Stargate, Across, Hop, etc.)
-                                 |
+https://earn.li.fi/v1/earn
+```
+
+Used to look up vault addresses before calling the Routing API. The Routing API needs the
+vault's contract address as `toToken` to activate Composer. The Earn API is how we find it.
+
+| Endpoint | Description |
+|---|---|
+| `GET /vaults` | List vaults with optional filters (`chainId`, `protocol`, `underlyingToken`, `limit`) |
+| `GET /vaults/:chainId/:address` | Get a single vault by chain + address |
+| `GET /protocols` | List all supported protocol names and URLs |
+| `GET /portfolio/:address/positions` | Active yield positions for a wallet |
+
+**Auth:** optional `x-lifi-api-key` header for higher rate limits.
+
+---
+
+## Bridge / Swap flow
+
+```
+lifi bridge --from USDC --to USDC --from-chain ethereum --to-chain base --amount 100
+                                    |
+                       src/core/bridge/bridge.ts  getBridgeQuote()
+                                    |
+                    Resolves chain names → chain IDs
+                    Converts amount to smallest unit
+                                    |
+                    GET https://li.quest/v1/quote
+                    fromChain=1  toChain=8453
+                    fromToken=USDC  toToken=USDC
+                                    |
+                    LI.FI picks best bridge route
+                    (Stargate, Across, Hop, Connext...)
+                                    |
                     Returns: transactionRequest
-                                 |
-              --execute flag: src/core/wallet/executor.ts
-              executeTransaction() signs and broadcasts
+                                    |
+              --execute: src/core/wallet/executor.ts
+              ensureAllowance() → executeTransaction()
 ```
 
-For same-chain swaps, `fromChain === toChain`. LI.FI routes through DEX aggregators
-(1inch, 0x, Paraswap, etc.).
+Same-chain swaps work identically with `fromChain === toChain`. LI.FI routes through
+DEX aggregators (1inch, 0x, Paraswap, etc.).
 
 ---
 
-## Earn / Composer Flow
-
-The Composer API is **not a separate endpoint**. It activates automatically when `toToken`
-is set to a recognized vault or staking contract address.
+## Earn / Composer flow
 
 ```
-User runs: lifi earn quote --protocol morpho-usdc --token USDC --chain base
-                                 |
-                    src/core/earn/protocols.ts
-                    getProtocolBySymbol('morpho-usdc')
-                    → vaultToken: 0x7BfA7C4f149E7415b73bdeDfe609237e29CBF34A
-                                 |
-                    src/core/earn/earn.ts
-                    getEarnQuote()
-                                 |
-                    GET /v1/quote
+lifi earn quote --protocol morpho --token USDC --amount 100 --chain base
+                                    |
+                       src/core/earn/earn.ts  getEarnQuote()
+                                    |
+                    Step 1: resolve vault
+                    GET https://earn.li.fi/v1/earn/vaults
+                        ?chainId=8453&protocol=morpho&underlyingToken=USDC&limit=5
+                    → picks best matching vault
+                    → vault.address = 0x...  (Morpho USDC vault on Base)
+                                    |
+                    Step 2: Composer quote
+                    GET https://li.quest/v1/quote
                     fromToken=USDC
-                    toToken=0x7BfA7C4f149E7415b73bdeDfe609237e29CBF34A  ← Morpho vault token
-                                 |
-                    LI.FI detects: this is a Composer route
-                    Compiles: swap (if needed) + vault deposit
-                    Simulates: full execution path
-                                 |
+                    toToken=0x...  ← vault address activates Composer
+                    fromChain=toChain=8453
+                                    |
+                    LI.FI detects Composer route
+                    Compiles: ERC-20 approval + vault deposit
                     Returns: single transactionRequest
-                    (one tx = swap + deposit, atomic)
-                                 |
-              --execute flag: signs and broadcasts
+                                    |
+              --execute: ensureAllowance() → executeTransaction()
+              One tx. One signature.
 ```
 
-### Why Composer is Powerful
+**Vault resolution logic** (`src/core/earn/earn.ts`):
 
-Without Composer, a USDC → Morpho deposit requires:
-1. Approve USDC spend
-2. Call Morpho `deposit()` directly
+1. If `--protocol` starts with `0x` — fetch vault directly by address from Earn API
+2. Otherwise — query `/vaults?chainId=&protocol=&limit=5`, pick vault whose `underlyingTokens` matches `--token`
+3. Fall back to first result if no exact token match
 
-With Composer, even cross-chain flows work in one tx:
-```
-ETH on Ethereum
-    → bridge to Base
-    → swap to USDC
-    → deposit into Morpho vault
-= one transaction, one signature
-```
+**Why Composer is powerful:**
+
+Without it, depositing ETH from Ethereum into a Morpho USDC vault on Base requires:
+1. Bridge ETH → Base
+2. Swap ETH → USDC on Base
+3. Approve USDC spend on Morpho
+4. Call `deposit()` on Morpho
+
+With Composer — one quote, one transaction, one signature.
 
 ---
 
-## Protocol Registry
+## ERC-20 approvals
 
-We maintain a local registry of vault token addresses in `src/core/earn/protocols.ts`.
-This is necessary because Composer activation depends on passing the correct `toToken` address.
+Before submitting any earn or bridge transaction involving an ERC-20 token, we check the
+allowance and approve if needed:
 
 ```ts
-{
-  symbol: 'morpho-usdc',
-  vaultToken: '0x7BfA7C4f149E7415b73bdeDfe609237e29CBF34A',  // Morpho USDC vault on Base
-  underlyingToken: 'USDC',
-  chainId: 8453,
-  category: 'vault',
+// src/core/wallet/keychain.ts  ensureAllowance()
+const allowance = await publicClient.readContract({
+  address: tokenAddress,
+  abi: erc20Abi,
+  functionName: 'allowance',
+  args: [walletAddress, spenderAddress],
+})
+
+if (allowance < requiredAmount) {
+  // send approve() tx first, wait for confirmation
 }
 ```
 
-When a user runs `lifi earn quote --protocol morpho-usdc`, we:
-1. Look up the protocol by symbol
-2. Use `vaultToken` as the `toToken` in the quote request
-3. Let LI.FI handle the routing and batching
+The `approvalAddress` comes from `quote.estimate.approvalAddress` — the LI.FI contract
+that needs to spend the token.
 
 ---
 
-## Transaction Execution
-
-After getting a quote, the `transactionRequest` object is a standard EVM transaction:
+## Transaction execution
 
 ```ts
-{
-  to: "0x1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE",  // LI.FI diamond contract
-  from: "0xYourWallet",
-  data: "0x...",   // encoded calldata
-  value: "0",      // ETH value (non-zero for native token sends)
-  gasLimit: "250000",
-  chainId: 8453
-}
+// src/core/wallet/keychain.ts  executeTransaction()
+const walletClient = createWalletClient({
+  account: privateKeyToAccount(privateKey),
+  chain: viemChain,
+  transport: http(rpcUrl),
+})
+
+const hash = await walletClient.sendTransaction({
+  to: tx.to,
+  data: tx.data,
+  value: tx.value,
+  gas: tx.gasLimit,
+})
 ```
 
-We sign and broadcast this using `viem`:
-
-```ts
-// src/core/wallet/executor.ts
-const client = createWalletClient({ account, chain, transport: http() })
-const hash = await client.sendTransaction({ to, data, value, gas })
-```
-
-For ERC-20 tokens, we first check the allowance and send an approval transaction if needed,
-using `viem`'s `readContract` + `writeContract` with the standard ERC-20 ABI.
+Private keys are stored in the OS keychain (keytar) and never written to disk in plaintext.
 
 ---
 
-## Status Tracking
-
-Cross-chain transactions (bridge + earn across chains) are tracked via:
+## Status tracking
 
 ```
 GET https://li.quest/v1/status?txHash=0x...&fromChain=1&toChain=8453
 ```
 
-Response statuses: `PENDING` → `DONE` or `FAILED`
+Statuses: `PENDING` → `DONE` or `FAILED`
 
 ```bash
 lifi status 0xabc123... --from-chain 1 --to-chain 8453
@@ -175,30 +214,32 @@ lifi status 0xabc123... --from-chain 1 --to-chain 8453
 
 ---
 
-## API Authentication
+## Authentication
 
-The LI.FI API works without a key for basic usage with rate limits.
-A Partner Portal API key (`LIFI_API_KEY`) removes rate limits and unlocks higher throughput.
+The Routing API and Earn API both work without a key (rate-limited). A Partner Portal
+API key removes limits and is passed as a header on every request:
 
-Set it with:
+```
+x-lifi-api-key: YOUR_KEY
+```
+
 ```bash
 lifi config set --api-key YOUR_KEY
 # or
 export LIFI_API_KEY=YOUR_KEY
 ```
 
-The key is passed as an `x-lifi-api-key` header on every request (`src/api/lifi/client.ts`).
-
 ---
 
-## Code Map
+## Code map
 
 | File | Role |
 |---|---|
 | `src/api/lifi/client.ts` | axios instance with base URL + auth header |
 | `src/api/lifi/endpoints.ts` | `getQuote()`, `getStatus()`, `getTokens()`, `getChains()` |
-| `src/core/bridge/bridge.ts` | `getBridgeQuote()` — resolves chains, calls `getQuote()` |
-| `src/core/swap/swap.ts` | `getSwapQuote()` — same chain bridge quote |
-| `src/core/earn/earn.ts` | `getEarnQuote()` — looks up vault token, calls `getQuote()` |
-| `src/core/earn/protocols.ts` | Registry of vault token addresses by protocol symbol |
-| `src/core/wallet/executor.ts` | `executeTransaction()`, `ensureAllowance()` via viem |
+| `src/api/lifi/earn.ts` | `listVaults()`, `getVault()`, `listEarnProtocols()`, `getPortfolio()` |
+| `src/core/bridge/bridge.ts` | `getBridgeQuote()` — resolves chains/amounts, calls `getQuote()` |
+| `src/core/swap/swap.ts` | `getSwapQuote()` — same-chain bridge quote |
+| `src/core/earn/earn.ts` | `getEarnQuote()` — resolves vault via Earn API, calls `getQuote()` |
+| `src/core/wallet/keychain.ts` | Wallet storage (keytar), `executeTransaction()`, `ensureAllowance()` |
+| `src/config/defaults.ts` | Chain IDs, config file paths |

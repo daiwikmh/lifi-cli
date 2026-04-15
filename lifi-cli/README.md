@@ -1,34 +1,26 @@
-# lifi-cli
-
-Bridge, swap, earn yield, and browse prediction markets — from the terminal.
-
-Built for developers and AI agents using the [LI.FI](https://li.fi) Composer API.
-
 ```
-npm install -g lifi-cli
-lifi --help
+  ██╗     ██╗███████╗██╗      ██████╗██╗     ██╗
+  ██║     ██║██╔════╝██║     ██╔════╝██║     ██║
+  ██║     ██║█████╗  ██║     ██║     ██║     ██║
+  ██║     ██║██╔══╝  ██║     ██║     ██║     ██║
+  ███████╗██║██║     ███████╗╚██████╗███████╗██║
+  ╚══════╝╚═╝╚═╝     ╚══════╝ ╚═════╝╚══════╝╚═╝
+
+  bridge · swap · earn · markets · agent · mcp
 ```
+
+**Terminal-native DeFi.** Bridge tokens across chains, swap, deposit into yield protocols, and browse prediction markets — all from the command line. Built for humans and AI agents using the [LI.FI Composer API](https://li.fi).
+
+[![npm](https://img.shields.io/npm/v/lifi-cli?color=00fff5&labelColor=0a0a0f)](https://www.npmjs.com/package/lifi-cli)
+[![license](https://img.shields.io/badge/license-MIT-39ff14?labelColor=0a0a0f)](./LICENSE)
 
 ---
 
-## What it does
-
-- **Bridge** — move tokens across any chain via LI.FI routing
-- **Swap** — swap tokens on a single chain
-- **Earn** — deposit into yield protocols (Morpho, Aave, Lido, EtherFi, Ethena, Pendle, and more) via the LI.FI Composer API
-- **Markets** — browse live Polymarket prediction markets
-- **Agent** — chat with an AI agent that has all of the above as tools (powered by OpenRouter)
-- **MCP server** — expose everything as tools for Claude Code, Cursor, or any MCP-compatible AI assistant
-
----
-
-## Installation
+## Install
 
 ```bash
 npm install -g lifi-cli
 ```
-
-Or run without installing:
 
 ```bash
 npx lifi-cli --help
@@ -36,168 +28,188 @@ npx lifi-cli --help
 
 ---
 
-## Setup
+## Quick start
 
 ```bash
-# Set your LI.FI API key (get one at the LI.FI Partner Portal)
+# 1. Create a wallet
+lifi wallet create --name main
+
+# 2. Set your LI.FI API key
 lifi config set --api-key YOUR_LIFI_KEY
 
-# Set OpenRouter key for the agent (get one at openrouter.ai)
-lifi config set --openrouter-key YOUR_OPENROUTER_KEY
+# 3. Bridge USDC from Ethereum to Base
+lifi bridge \
+  --from USDC --to USDC \
+  --from-chain ethereum --to-chain base \
+  --amount 100 --wallet main
 
-# Set default chain
-lifi config set --chain base
-```
+# 4. Deposit into Morpho yield vault
+lifi earn quote \
+  --protocol morpho --token USDC \
+  --amount 100 --chain base --wallet main
 
-All config values can also be set via environment variables:
-
-```bash
-LIFI_API_KEY=...
-OPENROUTER_API_KEY=...
-DEFAULT_CHAIN=base
+# 5. Start the AI agent
+lifi agent
 ```
 
 ---
 
 ## Commands
 
-### Wallet
+<details>
+<summary><strong>wallet</strong> — manage local wallets</summary>
 
 ```bash
-lifi wallet create --name my-wallet        # create new wallet (key stored in OS keychain)
-lifi wallet import --name my-wallet --key 0x...   # import from private key
-lifi wallet list                           # list all local wallets
+lifi wallet create --name main          # new wallet (key in OS keychain)
+lifi wallet import --name main --key 0x...  # import from private key
+lifi wallet list                        # list all wallets
 ```
 
-### Bridge
+</details>
+
+<details>
+<summary><strong>bridge</strong> — cross-chain token transfers</summary>
 
 ```bash
-# Get a quote
 lifi bridge \
-  --from USDC \
-  --to USDC \
-  --from-chain ethereum \
-  --to-chain base \
-  --amount 1000000 \
-  --wallet my-wallet
+  --from USDC --to USDC \
+  --from-chain ethereum --to-chain base \
+  --amount 100 --wallet main
 
-# Get quote as JSON
-lifi bridge ... --json
-
-# Execute the transaction
-lifi bridge ... --execute
+lifi bridge ... --execute   # sign and submit
+lifi bridge ... --json      # raw JSON output
 ```
 
-### Swap
+</details>
+
+<details>
+<summary><strong>swap</strong> — single-chain token swaps</summary>
 
 ```bash
-# Quote a swap on Base
 lifi swap \
-  --from USDC \
-  --to ETH \
-  --chain base \
-  --amount 1000000 \
-  --wallet my-wallet
+  --from USDC --to ETH \
+  --chain base --amount 100 --wallet main
 
-# Execute
 lifi swap ... --execute
 ```
 
-### Earn
+</details>
+
+<details>
+<summary><strong>earn</strong> — yield deposits via LI.FI Composer</summary>
 
 ```bash
-# List all supported protocols
+# browse vaults
+lifi earn vaults --chain base --token USDC
+
+# list supported protocols
 lifi earn protocols
-lifi earn protocols --category vault
-lifi earn protocols --json
 
-# Get a deposit quote (Morpho USDC vault on Base)
+# get a deposit quote (amount in human units)
 lifi earn quote \
-  --protocol morpho-usdc \
-  --token USDC \
-  --amount 1000000 \
-  --chain base \
-  --wallet my-wallet
+  --protocol morpho --token USDC \
+  --amount 100 --chain base --wallet main
 
-# Execute the deposit
-lifi earn quote \
-  --protocol morpho-usdc \
-  --token USDC \
-  --amount 1000000 \
-  --chain base \
-  --wallet my-wallet \
-  --execute
+# execute the deposit
+lifi earn quote ... --execute
+
+# show active positions for an address
+lifi earn portfolio 0xYourAddress
 ```
 
-Supported protocols:
+Supported protocols include: Morpho, Aave v3, Lido, EtherFi, Ethena, Pendle, Euler, Seamless, Kinetiq, Maple, Upshift, and more. Run `lifi earn protocols` for the live list.
 
-| Symbol | Protocol | Chain | Type |
-|---|---|---|---|
-| `morpho-usdc` | Morpho USDC | Base | vault |
-| `morpho-weth` | Morpho WETH | Base | vault |
-| `aave-usdc-base` | Aave V3 USDC | Base | lending |
-| `aave-usdc-eth` | Aave V3 USDC | Ethereum | lending |
-| `aave-weth-eth` | Aave V3 WETH | Ethereum | lending |
-| `lido-wsteth` | Lido wstETH | Ethereum | staking |
-| `etherfi-eeth` | EtherFi eETH | Ethereum | staking |
-| `etherfi-weeth` | EtherFi weETH | Ethereum | staking |
-| `pendle-usdc` | Pendle PT-USDC | Ethereum | yield |
-| `ethena-usde` | Ethena USDe | Ethereum | yield |
-| `ethena-susde` | Ethena sUSDe | Ethereum | yield |
-| `seamless-usdc` | Seamless USDC | Base | lending |
-| `euler-usdc` | Euler USDC | Ethereum | lending |
-| `kinetiq-khype` | Kinetiq kHYPE | Hyperliquid | staking |
+> **How Composer works:** setting `toToken` to a vault address on the LI.FI `/v1/quote` endpoint triggers Composer routing — any required swaps, bridging, and the vault deposit are bundled into a single transaction.
 
-### Markets
+</details>
+
+<details>
+<summary><strong>dryrun</strong> — simulate without submitting</summary>
 
 ```bash
-# List active Polymarket markets
-lifi markets list
-lifi markets list --query "bitcoin"
-lifi markets list --limit 50 --json
+lifi dryrun --type bridge \
+  --from USDC --to USDC \
+  --from-chain base --to-chain arbitrum \
+  --amount 100 --wallet main
 
-# Get a specific market
-lifi markets get will-btc-hit-100k-before-2025
+lifi dryrun --type earn \
+  --protocol morpho --token USDC \
+  --amount 100 --chain base --wallet main
+# returns projected APY, daily/monthly/annual yield estimate
 ```
 
-### Status
+</details>
+
+<details>
+<summary><strong>markets</strong> — prediction markets</summary>
 
 ```bash
-lifi status 0xabc123...
-lifi status 0xabc123... --from-chain 1 --to-chain 8453
+# Polymarket (no auth)
+lifi polymarket list
+lifi polymarket list --query "bitcoin"
+lifi polymarket get <slug>
+
+# Kalshi (requires API key)
+lifi config set --kalshi-key YOUR_KEY
+lifi kalshi list --query "fed rate"
+
+# Manifold (no auth)
+lifi manifold list
 ```
 
-### Agent
+</details>
+
+<details>
+<summary><strong>agent</strong> — interactive AI agent</summary>
+
+On first run, an interactive setup prompt configures your provider:
+
+```
+  Agent Setup
+  ────────────────────────────────────────
+  Providers:
+    1. openrouter
+    2. openai
+    3. ollama
+
+  provider › 1
+  model › [nvidia/nemotron-3-super-120b-a12b:free]
+  api key › ************
+  save? › [Y/n]
+```
 
 ```bash
-# Start an interactive AI agent with all LI.FI tools
-lifi agent
-
-# Use a specific OpenRouter model
-lifi agent --model openrouter/mistral-7b-instruct
-lifi agent --model anthropic/claude-3.5-sonnet
-lifi agent --model google/gemini-flash-1.5
+lifi agent            # start (launches setup if unconfigured)
+lifi agent --setup    # reconfigure provider and key
+lifi agent --model google/gemini-flash-1.5  # override model for this session
 ```
 
-The agent can answer questions, look up markets, and prepare quotes. Example session:
+The agent has access to 13 tools: bridge, swap, earn, vault browsing, portfolio, prediction markets (Polymarket/Kalshi/Manifold), dryrun simulations, and tx status.
+
+Example:
 
 ```
-you> what's the current yes price on the bitcoin etf approval market?
-agent> [fetches market] The current yes price is 78.3%, meaning the market gives ~78%
-       probability to BTC ETF approval. Volume is $12.4M.
+you> what yield can I get on 1000 USDC on Base?
+agent> Fetching vaults...
 
-you> get me an earn quote for 100 USDC into morpho on base
-agent> [calls lifi_earn_quote] Here's the quote: depositing 100 USDC into Morpho USDC
-       vault on Base...
+  Vault              APY     TVL
+  Morpho USDC        4.07%   $371M
+  Seamless USDC      3.2%    $28M
+  Aave v3 USDC       2.9%    $190M
+
+  At 4.07% APY on $1000: ~$11.15/month, ~$40.70/year.
 ```
 
-### MCP Server
+</details>
+
+<details>
+<summary><strong>mcp</strong> — MCP server for Claude Code / Cursor</summary>
 
 ```bash
 lifi mcp    # starts MCP server over stdio
 ```
 
-Add to your Claude Code config (`~/.claude/settings.json`):
+Add to `~/.claude/settings.json`:
 
 ```json
 {
@@ -210,26 +222,49 @@ Add to your Claude Code config (`~/.claude/settings.json`):
 }
 ```
 
-Available MCP tools:
-
 | Tool | Description |
 |---|---|
-| `lifi_bridge_quote` | Quote a cross-chain bridge |
-| `lifi_swap_quote` | Quote a same-chain swap |
-| `lifi_earn_quote` | Quote a yield deposit via Composer |
+| `lifi_bridge_quote` | Cross-chain bridge quote |
+| `lifi_swap_quote` | Same-chain swap quote |
+| `lifi_earn_quote` | Yield deposit quote via Composer |
 | `lifi_earn_protocols` | List supported protocols |
 | `lifi_markets_list` | List Polymarket markets |
 | `lifi_markets_get` | Get a specific market |
-| `lifi_tx_status` | Check tx status |
+| `lifi_tx_status` | Check transaction status |
 
-### Config
+</details>
+
+<details>
+<summary><strong>config</strong> — API keys and defaults</summary>
 
 ```bash
-lifi config set --api-key KEY
-lifi config set --openrouter-key KEY
-lifi config set --chain base
-lifi config show
+lifi config set --api-key KEY          # LI.FI API key
+lifi config set --kalshi-key KEY       # Kalshi API key
+lifi config set --chain base           # default chain
+lifi config set --wallet main          # default wallet
+lifi config show                       # print current config (keys masked)
 ```
+
+Config stored at `~/.lifi/config.json`. Can also be set via env vars:
+
+```bash
+LIFI_API_KEY=...
+DEFAULT_CHAIN=base
+DEFAULT_WALLET=main
+```
+
+</details>
+
+<details>
+<summary><strong>reset</strong> — wipe config and data</summary>
+
+```bash
+lifi reset              # clear config (interactive confirmation)
+lifi reset --wallets    # also delete wallet keys (unrecoverable — requires typing "yes")
+lifi reset --yes        # non-interactive (for scripting)
+```
+
+</details>
 
 ---
 
@@ -242,26 +277,23 @@ npm install lifi-cli
 ```ts
 import { getBridgeQuote, getEarnQuote, getMarkets } from 'lifi-cli'
 
-// Get a bridge quote
 const quote = await getBridgeQuote({
   fromChain: 'ethereum',
   toChain: 'base',
   fromToken: 'USDC',
   toToken: 'USDC',
-  amount: '1000000',
+  amount: '100000000',
   fromAddress: '0xYourAddress',
 })
 
-// Get an earn (Composer) quote
 const earnQuote = await getEarnQuote({
-  protocol: 'morpho-usdc',
+  protocol: 'morpho',
   token: 'USDC',
-  amount: '1000000',
+  amount: '100000000',  // smallest unit
   chain: 'base',
   fromAddress: '0xYourAddress',
 })
 
-// List Polymarket markets
 const markets = await getMarkets('bitcoin', 10)
 ```
 
@@ -269,47 +301,23 @@ Sub-path imports:
 
 ```ts
 import { getBridgeQuote } from 'lifi-cli/bridge'
-import { getEarnQuote, listProtocols } from 'lifi-cli/earn'
+import { getEarnQuote, fetchVaults, fetchEarnProtocols } from 'lifi-cli/earn'
 import { getMarkets } from 'lifi-cli/markets'
 import { runAgent } from 'lifi-cli/agent'
-import { startMcpServer } from 'lifi-cli/mcp'
 ```
-
----
-
-## How it works
-
-The earn commands use the **LI.FI Composer API** — the same `/v1/quote` endpoint as bridge and swap. Setting `toToken` to a supported vault or staking token address automatically triggers Composer routing, which bundles any required swaps and the deposit into a single transaction.
-
-```
-lifi earn quote --protocol morpho-usdc --token ETH --chain ethereum
-```
-
-This flow: ETH on Ethereum → swap to USDC → bridge to Base → deposit into Morpho vault. One quote. One transaction.
-
----
-
-## Global flags
-
-All commands support:
-
-| Flag | Description |
-|---|---|
-| `--json` | Output raw JSON instead of formatted tables |
-| `--help` | Show command help |
 
 ---
 
 ## Development
 
 ```bash
-git clone https://github.com/yourname/lifi-cli
+git clone https://github.com/daiwikmh/lifi-cli
 cd lifi-cli
 npm install
 npm run dev       # watch mode
 npm run build     # production build
 npm test          # run tests
-npm run typecheck # type check only
+npm run typecheck
 ```
 
 ---

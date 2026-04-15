@@ -8,7 +8,7 @@ export default function ConfigPage() {
         </div>
         <p className="text-text-secondary leading-relaxed">
           Manage CLI configuration. Set API keys, default chain, and default wallet.
-          Config is stored at <code className="text-xs bg-bg-secondary px-1.5 py-0.5 rounded text-text-primary">~/.config/lifi-cli/config.json</code>.
+          Config is stored at <code className="text-xs bg-bg-secondary px-1.5 py-0.5 rounded text-text-primary">~/.lifi/config.json</code>.
           API keys are masked in output.
         </p>
       </header>

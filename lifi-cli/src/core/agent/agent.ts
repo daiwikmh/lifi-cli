@@ -2,6 +2,7 @@ import readline from 'readline'
 import chalk from 'chalk'
 import { printAgentBanner } from '../../display/banner.js'
 import { createOpenRouterClient, createAgentClient } from '../../api/openrouter/index.js'
+import { formatAgentResponse } from './format.js'
 import { getBridgeQuote } from '../bridge/index.js'
 import { getSwapQuote } from '../swap/index.js'
 import { getEarnQuote, fetchVaults, fetchVault, fetchEarnProtocols, fetchPortfolio } from '../earn/index.js'
@@ -13,7 +14,15 @@ import { AGENT_TOOLS } from './tools.js'
 import { CHAIN_IDS } from '../../config/index.js'
 import type { AgentConfig, AgentMessage } from './agent.types.js'
 
-const DEFAULT_SYSTEM = `You are a DeFi assistant with access to LI.FI tools for bridging, swapping, earning yield, and checking prediction markets on Polymarket, Kalshi, and Manifold. Help users move and grow their crypto. Always confirm transaction details before executing. Present amounts in human-readable form.`
+const DEFAULT_SYSTEM = `You are a DeFi assistant with access to LI.FI tools for bridging, swapping, earning yield, and checking prediction markets on Polymarket, Kalshi, and Manifold. Help users move and grow their crypto. Always confirm transaction details before executing. Present amounts in human-readable form.
+
+IMPORTANT FORMATTING RULES — follow these exactly:
+- Plain text only. No markdown of any kind.
+- No asterisks (* or **), no underscores for emphasis, no pound signs (#) for headers.
+- No emoji characters.
+- For tables, use pipe-separated markdown table format (| col | col |) so the terminal can render them — no other table format.
+- No bullet points with asterisks. Use a dash (-) for lists if needed.
+- Keep responses concise and scannable.`
 
 async function dispatchTool(name: string, args: Record<string, unknown>): Promise<string> {
   try {
@@ -167,7 +176,8 @@ export async function runAgent(config: AgentConfig): Promise<void> {
     }
 
     messages.push(message)
-    console.log(chalk.green('agent> ') + (message.content ?? ''))
+    const formatted = formatAgentResponse(message.content ?? '')
+    console.log(chalk.green('agent> ') + formatted)
     console.log()
   }
 }

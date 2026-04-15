@@ -1,6 +1,6 @@
 {
   "name": "lifi-cli",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "LI.FI CLI — bridge, swap, earn, and bet from the terminal. For humans and agents.",
   "bin": {
     "lifi-cli": "./bin/lifi.js"

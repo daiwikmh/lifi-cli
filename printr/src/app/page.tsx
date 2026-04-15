@@ -2,6 +2,7 @@ import Link from "next/link";
 import "./landing.css";
 import { Header } from "@/components/header";
 import { Button } from "@/components/ui/button";
+import { LifiCanvas } from "@/components/lifi-canvas";
 import { HowItWorksSection } from "@/components/how-it-works";
 import { DevelopersSection } from "@/components/developers-section";
 
@@ -11,12 +12,13 @@ export default function Home() {
       <Header />
 
       <div className="flex flex-col min-h-svh justify-center items-center pt-28 pb-16 gap-10">
+        <LifiCanvas className="rounded-lg" />
         <div className="text-center relative">
           <div className="font-mono text-neon-green glow-green text-xs mb-4 tracking-widest uppercase">
             Terminal-native DeFi
           </div>
           <h1 className="text-5xl sm:text-6xl md:text-7xl font-bold tracking-tight text-white">
-            <span className="gradient-text">lifi-cli</span>
+            lifi-cli
           </h1>
           <p className="font-mono text-sm sm:text-base text-text-secondary text-balance mt-6 max-w-[540px] mx-auto leading-relaxed">
             Bridge, swap, earn yield, and browse prediction markets.

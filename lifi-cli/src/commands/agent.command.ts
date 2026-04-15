@@ -7,7 +7,7 @@ import { runAgentSetup, loadSavedAgentConfig } from '../core/agent/setup.js'
 export function agentCommand(): Command {
   return new Command('agent')
     .description('Start an interactive AI agent with LI.FI tools (powered by OpenRouter)')
-    .option('--model <model>', 'model ID override')
+    .option('--model <model>', 'model ID override', 'nvidia/nemotron-3-super-120b-a12b:free')
     .option('--system <prompt>', 'override system prompt')
     .option('--setup', 'reconfigure agent provider and key')
     .action(async (opts) => {

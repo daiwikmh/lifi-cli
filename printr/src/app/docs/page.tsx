@@ -33,15 +33,15 @@ export default function DocsPage() {
           <code>{`# LI.FI API key (required for bridge, swap, earn)
 lifi config set --api-key <LIFI_KEY>
 
-# OpenRouter key (required for lifi agent)
-lifi config set --openrouter-key <OPENROUTER_KEY>
-
 # Optional: Kalshi and Polymarket keys
 lifi config set --kalshi-key <KALSHI_KEY>
 lifi config set --polymarket-key <POLY_KEY>
 
 # Set defaults
-lifi config set --chain base --wallet main`}</code>
+lifi config set --chain base --wallet main
+
+# Agent provider is configured interactively on first run
+lifi agent`}</code>
         </div>
       </section>
 
@@ -76,19 +76,23 @@ lifi wallet list`}</code>
             {[
               ["lifi bridge", "Cross-chain token bridge with quote and execution"],
               ["lifi swap", "Single-chain token swap via LI.FI aggregator"],
-              ["lifi earn quote", "Get a yield deposit quote"],
+              ["lifi earn quote", "Get a yield deposit quote via LI.FI Composer"],
+              ["lifi earn vaults", "Browse yield vaults with filters"],
               ["lifi earn protocols", "List supported yield protocols"],
+              ["lifi earn portfolio <addr>", "Show active yield positions for an address"],
+              ["lifi dryrun", "Simulate a transaction without submitting"],
               ["lifi markets list", "Browse Polymarket prediction markets"],
               ["lifi markets get", "Get details for a specific market"],
               ["lifi kalshi", "Browse Kalshi prediction markets"],
               ["lifi manifold", "Browse Manifold prediction markets"],
-              ["lifi agent", "Start interactive AI agent (OpenRouter)"],
+              ["lifi agent", "Interactive AI agent (openrouter / openai / ollama)"],
               ["lifi wallet create", "Create a new wallet"],
               ["lifi wallet import", "Import wallet from private key"],
               ["lifi wallet list", "List all local wallets"],
               ["lifi config set", "Set API keys and defaults"],
               ["lifi config show", "Show current configuration"],
               ["lifi status", "Track a cross-chain transaction"],
+              ["lifi reset", "Remove all config and saved data"],
               ["lifi mcp", "Start MCP server for agent frameworks"],
             ].map(([cmd, desc]) => (
               <tr key={cmd}>

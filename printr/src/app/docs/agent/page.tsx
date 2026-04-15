@@ -82,7 +82,7 @@ lifi agent --model gpt-4o`}</code>
           </thead>
           <tbody>
             {[
-              ["openrouter", "anthropic/claude-3.5-sonnet", "openrouter.ai/keys"],
+              ["openrouter", "nvidia/nemotron-3-super-120b-a12b:free", "openrouter.ai/keys"],
               ["openai", "gpt-4o", "platform.openai.com"],
               ["ollama", "llama3", "none (local)"],
             ].map(([p, m, src]) => (
