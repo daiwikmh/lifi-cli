@@ -18,7 +18,7 @@ import {
   telegramCommand,
 } from './commands/index.js'
 
-const VERSION = '0.1.15'
+const VERSION = '0.1.16'
 
 const program = new Command()
 

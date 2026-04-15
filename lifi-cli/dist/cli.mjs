@@ -2517,7 +2517,7 @@ Notifications are working. You will be notified here after every transaction sub
 }
 
 // src/cli.ts
-var VERSION = "0.1.15";
+var VERSION = "0.1.16";
 var program = new Command16();
 program.name("lifi-cli").description("LI.FI CLI \u2014 bridge, swap, earn, and bet from the terminal.").version(VERSION).action(() => {
   printClibanner(VERSION);
