@@ -115,6 +115,63 @@ export const AGENT_TOOLS: AgentTool[] = [
   {
     type: 'function',
     function: {
+      name: 'dryrun_bridge',
+      description: 'Simulate a cross-chain bridge without submitting — returns route, gas, approval requirements',
+      parameters: {
+        type: 'object',
+        properties: {
+          fromChain: { type: 'string', description: 'Source chain name or ID' },
+          toChain: { type: 'string', description: 'Destination chain name or ID' },
+          fromToken: { type: 'string', description: 'Token to send' },
+          toToken: { type: 'string', description: 'Token to receive' },
+          amount: { type: 'string', description: 'Amount in token units' },
+          fromAddress: { type: 'string', description: 'Sender address (0x...)' },
+          slippage: { type: 'number', description: 'Slippage tolerance (default 0.005)' },
+        },
+        required: ['fromChain', 'toChain', 'fromToken', 'toToken', 'amount', 'fromAddress'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'dryrun_swap',
+      description: 'Simulate a single-chain token swap without submitting — returns route, price impact, gas',
+      parameters: {
+        type: 'object',
+        properties: {
+          chain: { type: 'string', description: 'Chain name or ID' },
+          fromToken: { type: 'string', description: 'Token to swap from' },
+          toToken: { type: 'string', description: 'Token to swap to' },
+          amount: { type: 'string', description: 'Amount in token units' },
+          fromAddress: { type: 'string', description: 'Sender address (0x...)' },
+          slippage: { type: 'number', description: 'Slippage tolerance (default 0.005)' },
+        },
+        required: ['chain', 'fromToken', 'toToken', 'amount', 'fromAddress'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'dryrun_earn',
+      description: 'Simulate a yield vault deposit without submitting — returns APY, TVL, projected yield, gas',
+      parameters: {
+        type: 'object',
+        properties: {
+          protocol: { type: 'string', description: 'Protocol slug or vault address (0x...)' },
+          token: { type: 'string', description: 'Token to deposit' },
+          amount: { type: 'string', description: 'Amount in smallest unit' },
+          chain: { type: 'string', description: 'Chain name or ID' },
+          fromAddress: { type: 'string', description: 'Sender address (0x...)' },
+        },
+        required: ['protocol', 'token', 'amount', 'chain', 'fromAddress'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'get_tx_status',
       description: 'Check the status of a cross-chain transaction',
       parameters: {

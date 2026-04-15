@@ -2,6 +2,9 @@ import type { OpenAI } from 'openai'
 
 export interface AgentConfig {
   model: string
+  provider?: string
+  apiKey?: string
+  baseUrl?: string
   systemPrompt?: string
   maxIterations?: number
 }

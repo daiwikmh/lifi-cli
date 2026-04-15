@@ -1,9 +1,10 @@
 import { Command } from 'commander'
 import chalk from 'chalk'
-import { getEarnQuote, fetchVaults, fetchVault, fetchEarnChains, fetchEarnProtocols, fetchPortfolio } from '../core/earn/index.js'
+import { getEarnQuote, fetchVaults, fetchVault, fetchEarnProtocols, fetchPortfolio } from '../core/earn/index.js'
 import { executeTransaction, ensureAllowance } from '../core/wallet/index.js'
-import { makeTable, withSpinner, formatAmount, formatAPY } from '../display/index.js'
+import { makeTable, withSpinner, formatAmount, formatAPY, formatUSD } from '../display/index.js'
 import { resolveChain, CHAIN_IDS } from '../config/index.js'
+import { toSmallestUnit } from '../core/token/amount.js'
 
 function resolveChainId(chain: string | number): number {
   if (typeof chain === 'number') return chain
@@ -13,25 +14,26 @@ function resolveChainId(chain: string | number): number {
 }
 
 export function earnCommand(): Command {
-  const earn = new Command('earn').description('Discover vaults, earn yield, and track positions via LI.FI Earn API')
+  const earn = new Command('earn').description('Discover vaults, earn yield, and track positions via LI.FI Earn')
 
   earn
     .command('quote')
     .description('Get a quote to deposit into a yield vault')
     .requiredOption('--protocol <protocol>', 'protocol slug (e.g. morpho) or vault address (0x...)')
     .requiredOption('--token <token>', 'token to deposit (symbol or address)')
-    .requiredOption('--amount <amount>', 'amount in smallest unit (e.g. 1000000 for 1 USDC)')
+    .requiredOption('--amount <amount>', 'amount in human units (e.g. 10 for 10 USDC)')
     .requiredOption('--wallet <name>', 'wallet name (from lifi wallet list)')
     .option('--chain <chain>', 'chain name or ID', resolveChain())
     .option('--execute', 'sign and submit the deposit transaction')
     .option('--json', 'output as JSON')
     .action(async (opts) => {
       try {
+        const rawAmount = await toSmallestUnit(opts.amount, opts.token, opts.chain)
         const quote = await withSpinner('Fetching earn quote...', async () =>
           getEarnQuote({
             protocol: opts.protocol,
             token: opts.token,
-            amount: opts.amount,
+            amount: rawAmount,
             chain: opts.chain,
             fromAddress: opts.wallet,
           })
@@ -46,12 +48,13 @@ export function earnCommand(): Command {
           console.log(makeTable(
             ['Field', 'Value'],
             [
-              ['Protocol', quote.protocol],
-              ['Deposit', `${formatAmount(quote.fromAmount)} ${opts.token}`],
+              ['Vault', quote.protocol],
+              ['Slug', quote.vaultSlug],
+              ['Deposit', `${formatAmount(quote.fromAmount)} ${quote.fromToken}`],
               ['Vault tokens', formatAmount(quote.toAmount)],
               ['Est. APY', quote.estimatedApy != null ? formatAPY(quote.estimatedApy) : 'n/a'],
               ['Est. duration', `${quote.estimatedDuration}s`],
-              ['Gas cost', quote.gasCostUSD],
+              ['Gas cost', `$${quote.gasCostUSD}`],
             ]
           ))
           if (quote.approvalAddress) {
@@ -107,48 +110,51 @@ export function earnCommand(): Command {
   earn
     .command('vaults')
     .description('List available yield vaults from the LI.FI Earn API')
-    .option('--chain <chain>', 'filter by chain (name or ID)')
-    .option('--protocol <protocol>', 'filter by protocol slug')
+    .option('--chain <chain>', 'filter by chain name or ID')
+    .option('--protocol <protocol>', 'filter by protocol slug (e.g. morpho, aave-v3)')
     .option('--token <token>', 'filter by underlying token symbol')
-    .option('--category <category>', 'filter by category (vault, lending, staking, yield)')
+    .option('--tags <tags>', 'filter by tags (comma-separated)')
     .option('--limit <limit>', 'max results', '20')
-    .option('--offset <offset>', 'pagination offset', '0')
+    .option('--cursor <cursor>', 'pagination cursor from previous response')
     .option('--json', 'output as JSON')
     .action(async (opts) => {
       try {
-        const params: Record<string, unknown> = {
-          limit: parseInt(opts.limit),
-          offset: parseInt(opts.offset),
-        }
+        const params: Record<string, unknown> = { limit: parseInt(opts.limit) }
         if (opts.chain) params.chainId = resolveChainId(opts.chain)
         if (opts.protocol) params.protocol = opts.protocol
         if (opts.token) params.underlyingToken = opts.token
-        if (opts.category) params.category = opts.category
+        if (opts.tags) params.tags = opts.tags
+        if (opts.cursor) params.cursor = opts.cursor
 
-        const result = await withSpinner('Fetching vaults...', () => fetchVaults(params as Parameters<typeof fetchVaults>[0]))
+        const result = await withSpinner('Fetching vaults...', () =>
+          fetchVaults(params as Parameters<typeof fetchVaults>[0])
+        )
 
         if (opts.json) {
           console.log(JSON.stringify(result, null, 2))
           return
         }
 
-        if (!result.vaults.length) {
+        if (!result.data.length) {
           console.log(chalk.yellow('No vaults found for the given filters.'))
           return
         }
 
         console.log(makeTable(
-          ['Name', 'Protocol', 'Chain', 'Token', 'APY', 'TVL'],
-          result.vaults.map((v) => [
+          ['Name', 'Protocol', 'Chain', 'Underlying', 'APY', 'TVL'],
+          result.data.map((v) => [
             v.name.slice(0, 30),
-            v.protocol,
+            v.protocol.name,
             String(v.chainId),
-            v.underlyingToken.symbol,
-            v.apy != null ? formatAPY(v.apy) : 'n/a',
-            v.tvl != null ? `$${(v.tvl / 1e6).toFixed(1)}M` : 'n/a',
+            v.underlyingTokens.map((t) => t.symbol).join(', '),
+            v.analytics?.apy?.total != null ? formatAPY(v.analytics.apy.total) : 'n/a',
+            v.analytics?.tvl?.usd != null ? formatUSD(parseFloat(v.analytics.tvl.usd)) : 'n/a',
           ])
         ))
-        console.log(chalk.dim(`\nShowing ${result.vaults.length} of ${result.total} vaults. Use --offset to paginate.`))
+        console.log(chalk.dim(`\nShowing ${result.data.length} of ${result.total} vaults.`))
+        if (result.nextCursor) {
+          console.log(chalk.dim(`Next page: --cursor ${result.nextCursor}`))
+        }
       } catch (err) {
         console.error(chalk.red('Error:'), String(err))
         process.exit(1)
@@ -161,7 +167,9 @@ export function earnCommand(): Command {
     .option('--json', 'output as JSON')
     .action(async (chainId, address, opts) => {
       try {
-        const vault = await withSpinner('Fetching vault...', () => fetchVault(parseInt(chainId), address))
+        const vault = await withSpinner('Fetching vault...', () =>
+          fetchVault(parseInt(chainId), address)
+        )
 
         if (opts.json) {
           console.log(JSON.stringify(vault, null, 2))
@@ -172,14 +180,18 @@ export function earnCommand(): Command {
           ['Field', 'Value'],
           [
             ['Name', vault.name],
-            ['Protocol', vault.protocol],
+            ['Slug', vault.slug],
+            ['Protocol', vault.protocol.name],
             ['Chain', String(vault.chainId)],
             ['Address', vault.address],
-            ['Underlying', `${vault.underlyingToken.symbol} (${vault.underlyingToken.address})`],
-            ['Vault token', `${vault.vaultToken.symbol} (${vault.vaultToken.address})`],
-            ['APY', vault.apy != null ? formatAPY(vault.apy) : 'n/a'],
-            ['TVL', vault.tvl != null ? `$${(vault.tvl / 1e6).toFixed(2)}M` : 'n/a'],
-            ['Category', vault.category],
+            ['Underlying', vault.underlyingTokens.map((t) => `${t.symbol} (${t.address})`).join(', ')],
+            ['APY (total)', vault.analytics?.apy?.total != null ? formatAPY(vault.analytics.apy.total) : 'n/a'],
+            ['APY (base)', vault.analytics?.apy?.base != null ? formatAPY(vault.analytics.apy.base) : 'n/a'],
+            ['APY (reward)', vault.analytics?.apy?.reward != null ? formatAPY(vault.analytics.apy.reward) : 'n/a'],
+            ['TVL', vault.analytics?.tvl?.usd != null ? formatUSD(parseFloat(vault.analytics.tvl.usd)) : 'n/a'],
+            ['Tags', vault.tags?.join(', ') || 'none'],
+            ['Redeemable', vault.isRedeemable ? 'yes' : 'no'],
+            ['Transactional', vault.isTransactional ? 'yes' : 'no'],
           ]
         ))
       } catch (err) {
@@ -202,31 +214,8 @@ export function earnCommand(): Command {
         }
 
         console.log(makeTable(
-          ['Protocol', 'Slug', 'Vaults'],
-          protocols.map((p) => [p.name, p.slug, String(p.vaultCount)])
-        ))
-      } catch (err) {
-        console.error(chalk.red('Error:'), String(err))
-        process.exit(1)
-      }
-    })
-
-  earn
-    .command('chains')
-    .description('List chains with active vaults on LI.FI Earn')
-    .option('--json', 'output as JSON')
-    .action(async (opts) => {
-      try {
-        const chains = await withSpinner('Fetching chains...', fetchEarnChains)
-
-        if (opts.json) {
-          console.log(JSON.stringify(chains, null, 2))
-          return
-        }
-
-        console.log(makeTable(
-          ['Chain ID', 'Name', 'Vaults'],
-          chains.map((c) => [String(c.id), c.name, String(c.vaultCount)])
+          ['Protocol', 'URL'],
+          protocols.map((p) => [p.name, p.url])
         ))
       } catch (err) {
         console.error(chalk.red('Error:'), String(err))
@@ -236,7 +225,7 @@ export function earnCommand(): Command {
 
   earn
     .command('portfolio <address>')
-    .description('Show all DeFi positions for a wallet address')
+    .description('Show all active yield positions for a wallet address')
     .option('--json', 'output as JSON')
     .action(async (address, opts) => {
       try {
@@ -247,23 +236,29 @@ export function earnCommand(): Command {
           return
         }
 
-        if (!portfolio.positions.length) {
+        if (!portfolio.positions?.length) {
           console.log(chalk.yellow('No active positions found for this address.'))
           return
         }
 
+        let totalUsd = 0
         console.log(makeTable(
-          ['Vault', 'Protocol', 'Token', 'Balance', 'APY', 'Value (USD)'],
-          portfolio.positions.map((p) => [
-            p.vault.name.slice(0, 28),
-            p.vault.protocol,
-            p.vault.underlyingToken.symbol,
-            formatAmount(p.balance),
-            p.vault.apy != null ? formatAPY(p.vault.apy) : 'n/a',
-            p.balanceUSD != null ? `$${p.balanceUSD.toFixed(2)}` : 'n/a',
-          ])
+          ['Protocol', 'Asset', 'Balance', 'Value (USD)', 'Chain'],
+          portfolio.positions.map((p) => {
+            const usd = parseFloat(p.balanceUsd)
+            totalUsd += isNaN(usd) ? 0 : usd
+            return [
+              p.protocolName,
+              p.asset.symbol,
+              parseFloat(p.balanceNative).toFixed(6),
+              formatUSD(p.balanceUsd),
+              String(p.chainId),
+            ]
+          })
         ))
-        console.log(chalk.dim(`\nTotal: $${portfolio.totalUSD?.toFixed(2) ?? 'n/a'}`))
+        if (totalUsd > 0) {
+          console.log(chalk.dim(`\nTotal: ${formatUSD(totalUsd)}`))
+        }
       } catch (err) {
         console.error(chalk.red('Error:'), String(err))
         process.exit(1)

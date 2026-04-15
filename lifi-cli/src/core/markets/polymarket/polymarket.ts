@@ -33,7 +33,7 @@ export async function getMarkets(query?: string, limit = 20): Promise<Market[]> 
     }
   }
 
-  return markets
+  return markets.slice(0, limit)
 }
 
 export async function getMarketBySlug(slug: string): Promise<Market | null> {

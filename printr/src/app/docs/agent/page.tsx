@@ -7,9 +7,8 @@ export default function AgentPage() {
           <h1 className="text-3xl font-bold tracking-tight text-text-primary">Agent</h1>
         </div>
         <p className="text-text-secondary leading-relaxed">
-          An interactive AI agent with all DeFi tools wired in. Powered by
-          OpenRouter. Chat in natural language to bridge, swap, check markets,
-          and more.
+          An interactive AI agent with all DeFi tools wired in. Supports OpenRouter,
+          OpenAI, and Ollama. Chat in natural language to bridge, swap, check markets, and more.
         </p>
       </header>
 
@@ -29,8 +28,9 @@ export default function AgentPage() {
           </thead>
           <tbody>
             {[
-              ["--model <model>", "OpenRouter model ID (default: anthropic/claude-3.5-sonnet)"],
+              ["--model <model>", "Model ID override for this session"],
               ["--system <prompt>", "Override the system prompt"],
+              ["--setup", "Reconfigure provider, model, and API key"],
             ].map(([flag, desc]) => (
               <tr key={flag as string}>
                 <td>{flag}</td>
@@ -40,27 +40,64 @@ export default function AgentPage() {
           </tbody>
         </table>
         <div className="code-block">
-          <code>{`# Start with default model (Claude 3.5 Sonnet)
+          <code>{`# First run — interactive setup launches automatically
 lifi agent
 
-# Use a different model
-lifi agent --model openai/gpt-4o
+# Force reconfigure
+lifi agent --setup
 
-# Use a free model
-lifi agent --model meta-llama/llama-3.1-8b-instruct:free`}</code>
+# Override model for this session
+lifi agent --model gpt-4o`}</code>
         </div>
       </section>
 
       <section className="flex flex-col gap-4">
-        <h2 className="text-xl font-semibold text-neon-cyan glow-cyan">
+        <h2 id="setup" className="text-xl font-semibold text-neon-cyan glow-cyan">
           Setup
         </h2>
         <p className="text-sm text-text-secondary">
-          Requires an OpenRouter API key:
+          On first run (or with <code className="text-xs bg-bg-secondary px-1.5 py-0.5 rounded">--setup</code>),
+          an interactive prompt guides you through configuration:
         </p>
         <div className="code-block">
-          <code>lifi config set --openrouter-key {"<OPENROUTER_KEY>"}</code>
+          <code>{`  Agent Setup
+  ────────────────────────────────────────
+  Providers:
+    1. openrouter
+    2. openai
+    3. ollama
+
+  provider › 1
+  model › [anthropic/claude-3.5-sonnet]
+  api key › ************
+  save? › [Y/n]`}</code>
         </div>
+        <table className="param-table">
+          <thead>
+            <tr>
+              <th>Provider</th>
+              <th>Default model</th>
+              <th>API key source</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[
+              ["openrouter", "anthropic/claude-3.5-sonnet", "openrouter.ai/keys"],
+              ["openai", "gpt-4o", "platform.openai.com"],
+              ["ollama", "llama3", "none (local)"],
+            ].map(([p, m, src]) => (
+              <tr key={p as string}>
+                <td>{p}</td>
+                <td className="!text-text-secondary">{m}</td>
+                <td className="!text-text-muted">{src}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="text-sm text-text-muted">
+          Config is saved to <code className="text-xs bg-bg-secondary px-1.5 py-0.5 rounded">~/.lifi/config.json</code>.
+          Run <code className="text-xs bg-bg-secondary px-1.5 py-0.5 rounded">lifi reset</code> to clear it.
+        </p>
       </section>
 
       <section className="flex flex-col gap-4">
@@ -82,10 +119,15 @@ lifi agent --model meta-llama/llama-3.1-8b-instruct:free`}</code>
               ["get_bridge_quote", "Get a cross-chain bridge quote"],
               ["get_swap_quote", "Get a single-chain swap quote"],
               ["get_earn_quote", "Get a yield deposit quote"],
+              ["list_earn_vaults", "Browse yield vaults with filters"],
               ["list_earn_protocols", "List supported yield protocols"],
+              ["get_earn_portfolio", "Show yield positions for an address"],
               ["list_markets", "List Polymarket prediction markets"],
               ["list_kalshi_markets", "List Kalshi prediction markets"],
               ["list_manifold_markets", "List Manifold prediction markets"],
+              ["dryrun_bridge", "Simulate a bridge without submitting"],
+              ["dryrun_swap", "Simulate a swap without submitting"],
+              ["dryrun_earn", "Simulate an earn deposit with projected yield"],
               ["get_tx_status", "Check cross-chain transaction status"],
             ].map(([tool, desc]) => (
               <tr key={tool as string}>
@@ -106,7 +148,8 @@ lifi agent --model meta-llama/llama-3.1-8b-instruct:free`}</code>
             "Bridge 100 USDC from Base to Arbitrum for me",
             "What are the top 5 prediction markets right now?",
             "Swap 0.01 ETH to USDC on Base",
-            "What yield protocols are available for USDC?",
+            "What yield protocols are available for USDC on Base?",
+            "Show projected yield if I deposit 1000 USDC into Morpho",
             "Check the status of transaction 0xabc...",
           ].map((prompt) => (
             <div key={prompt} className="px-4 py-2.5 rounded-lg bg-bg-card border border-border-dim text-sm text-text-secondary font-mono">
@@ -117,5 +160,5 @@ lifi agent --model meta-llama/llama-3.1-8b-instruct:free`}</code>
         </div>
       </section>
     </article>
-  );
+  )
 }

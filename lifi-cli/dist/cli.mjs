@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import {
   CHAIN_IDS,
+  CONFIG_FILE,
   WALLETS_DIR,
-  fetchEarnChains,
   fetchEarnProtocols,
   fetchPortfolio,
   fetchVault,
@@ -14,13 +14,14 @@ import {
   getMarkets,
   getStatus,
   getSwapQuote,
+  getTokens,
   loadConfig,
   resolveChain,
   saveConfig
-} from "./chunk-PHS2237J.mjs";
+} from "./chunk-KUNM2NGH.mjs";
 
 // src/cli.ts
-import { Command as Command13 } from "commander";
+import { Command as Command15 } from "commander";
 
 // src/display/banner.ts
 import chalk from "chalk";
@@ -73,38 +74,54 @@ import { Command } from "commander";
 import chalk2 from "chalk";
 
 // src/core/wallet/wallet.ts
-import fs from "fs";
-import path from "path";
+import fs2 from "fs";
+import path2 from "path";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 
 // src/core/wallet/keychain.ts
-var SERVICE = "lifi-cli";
+import fs from "fs";
+import path from "path";
+import os from "os";
+var VAULT_DIR = path.join(os.homedir(), ".lifi-cli");
+var VAULT_FILE = path.join(VAULT_DIR, "secrets.json");
+function loadVault() {
+  if (!fs.existsSync(VAULT_FILE)) return {};
+  try {
+    return JSON.parse(fs.readFileSync(VAULT_FILE, "utf-8"));
+  } catch {
+    return {};
+  }
+}
+function saveVault(vault) {
+  fs.mkdirSync(VAULT_DIR, { recursive: true, mode: 448 });
+  fs.writeFileSync(VAULT_FILE, JSON.stringify(vault, null, 2), { mode: 384 });
+}
 async function storeSecret(account, secret) {
-  const keytar = await import("keytar");
-  await keytar.setPassword(SERVICE, account, secret);
+  const vault = loadVault();
+  vault[account] = secret;
+  saveVault(vault);
 }
 async function getSecret(account) {
-  const keytar = await import("keytar");
-  return keytar.getPassword(SERVICE, account);
+  return loadVault()[account] ?? null;
 }
 
 // src/core/wallet/wallet.ts
-var WALLET_INDEX = path.join(WALLETS_DIR, "index.json");
+var WALLET_INDEX = path2.join(WALLETS_DIR, "index.json");
 function ensureWalletsDir() {
-  if (!fs.existsSync(WALLETS_DIR)) fs.mkdirSync(WALLETS_DIR, { recursive: true });
+  if (!fs2.existsSync(WALLETS_DIR)) fs2.mkdirSync(WALLETS_DIR, { recursive: true });
 }
 function readIndex() {
   ensureWalletsDir();
-  if (!fs.existsSync(WALLET_INDEX)) return [];
+  if (!fs2.existsSync(WALLET_INDEX)) return [];
   try {
-    return JSON.parse(fs.readFileSync(WALLET_INDEX, "utf-8"));
+    return JSON.parse(fs2.readFileSync(WALLET_INDEX, "utf-8"));
   } catch {
     return [];
   }
 }
 function writeIndex(wallets) {
   ensureWalletsDir();
-  fs.writeFileSync(WALLET_INDEX, JSON.stringify(wallets, null, 2));
+  fs2.writeFileSync(WALLET_INDEX, JSON.stringify(wallets, null, 2));
 }
 async function createWallet(name) {
   const privateKey = generatePrivateKey();
@@ -202,11 +219,16 @@ function formatAmount(amount, decimals = 6) {
   const n = typeof amount === "string" ? parseFloat(amount) : amount;
   return n.toLocaleString("en-US", { maximumFractionDigits: decimals });
 }
+function formatTokenAmount(rawAmount, tokenDecimals, displayDecimals = 6) {
+  const n = parseFloat(rawAmount) / Math.pow(10, tokenDecimals);
+  return n.toLocaleString("en-US", { maximumFractionDigits: displayDecimals });
+}
 function formatAPY(apy) {
   return `${(apy * 100).toFixed(2)}%`;
 }
 function formatUSD(amount) {
-  return `$${amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const n = typeof amount === "string" ? parseFloat(amount) : amount;
+  return `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 function formatChain(chainId) {
   const names = {
@@ -405,22 +427,78 @@ function swapCommand() {
 // src/commands/earn.command.ts
 import { Command as Command3 } from "commander";
 import chalk4 from "chalk";
+
+// src/core/token/amount.ts
+var COMMON_DECIMALS = {
+  eth: 18,
+  weth: 18,
+  matic: 18,
+  bnb: 18,
+  avax: 18,
+  ftm: 18,
+  cro: 18,
+  one: 18,
+  glmr: 18,
+  metis: 18,
+  usdc: 6,
+  usdt: 6,
+  usdbc: 6,
+  dai: 18,
+  busd: 18,
+  frax: 18,
+  wbtc: 8,
+  btcb: 8
+};
 function resolveChainId(chain) {
+  if (typeof chain === "number") return chain;
+  return CHAIN_IDS[String(chain).toLowerCase()] ?? 0;
+}
+async function fetchDecimals(token, chainId) {
+  try {
+    const resp = await getTokens([chainId]);
+    const chainTokens = resp.tokens[String(chainId)] ?? [];
+    const match = chainTokens.find(
+      (t) => t.symbol.toLowerCase() === token.toLowerCase() || t.address.toLowerCase() === token.toLowerCase()
+    );
+    return match?.decimals ?? 18;
+  } catch {
+    return 18;
+  }
+}
+async function toSmallestUnit(humanAmount, token, chain) {
+  const parsed = parseFloat(humanAmount);
+  if (isNaN(parsed)) throw new Error(`Invalid amount: ${humanAmount}`);
+  const sym = token.toLowerCase().replace(/^0x[0-9a-f]{40}$/i, "");
+  let decimals = COMMON_DECIMALS[sym];
+  if (decimals === void 0) {
+    const chainId = resolveChainId(chain);
+    decimals = await fetchDecimals(token, chainId);
+  }
+  const factor = BigInt(10) ** BigInt(decimals);
+  const [whole, frac = ""] = humanAmount.split(".");
+  const fracPadded = (frac + "0".repeat(decimals)).slice(0, decimals);
+  const result = BigInt(whole) * factor + BigInt(fracPadded);
+  return result.toString();
+}
+
+// src/commands/earn.command.ts
+function resolveChainId2(chain) {
   if (typeof chain === "number") return chain;
   const id = CHAIN_IDS[String(chain).toLowerCase()];
   if (!id) throw new Error(`Unknown chain: ${chain}`);
   return id;
 }
 function earnCommand() {
-  const earn = new Command3("earn").description("Discover vaults, earn yield, and track positions via LI.FI Earn API");
-  earn.command("quote").description("Get a quote to deposit into a yield vault").requiredOption("--protocol <protocol>", "protocol slug (e.g. morpho) or vault address (0x...)").requiredOption("--token <token>", "token to deposit (symbol or address)").requiredOption("--amount <amount>", "amount in smallest unit (e.g. 1000000 for 1 USDC)").requiredOption("--wallet <name>", "wallet name (from lifi wallet list)").option("--chain <chain>", "chain name or ID", resolveChain()).option("--execute", "sign and submit the deposit transaction").option("--json", "output as JSON").action(async (opts) => {
+  const earn = new Command3("earn").description("Discover vaults, earn yield, and track positions via LI.FI Earn");
+  earn.command("quote").description("Get a quote to deposit into a yield vault").requiredOption("--protocol <protocol>", "protocol slug (e.g. morpho) or vault address (0x...)").requiredOption("--token <token>", "token to deposit (symbol or address)").requiredOption("--amount <amount>", "amount in human units (e.g. 10 for 10 USDC)").requiredOption("--wallet <name>", "wallet name (from lifi wallet list)").option("--chain <chain>", "chain name or ID", resolveChain()).option("--execute", "sign and submit the deposit transaction").option("--json", "output as JSON").action(async (opts) => {
     try {
+      const rawAmount = await toSmallestUnit(opts.amount, opts.token, opts.chain);
       const quote = await withSpinner(
         "Fetching earn quote...",
         async () => getEarnQuote({
           protocol: opts.protocol,
           token: opts.token,
-          amount: opts.amount,
+          amount: rawAmount,
           chain: opts.chain,
           fromAddress: opts.wallet
         })
@@ -433,12 +511,13 @@ function earnCommand() {
         console.log(makeTable(
           ["Field", "Value"],
           [
-            ["Protocol", quote.protocol],
-            ["Deposit", `${formatAmount(quote.fromAmount)} ${opts.token}`],
+            ["Vault", quote.protocol],
+            ["Slug", quote.vaultSlug],
+            ["Deposit", `${formatAmount(quote.fromAmount)} ${quote.fromToken}`],
             ["Vault tokens", formatAmount(quote.toAmount)],
             ["Est. APY", quote.estimatedApy != null ? formatAPY(quote.estimatedApy) : "n/a"],
             ["Est. duration", `${quote.estimatedDuration}s`],
-            ["Gas cost", quote.gasCostUSD]
+            ["Gas cost", `$${quote.gasCostUSD}`]
           ]
         ));
         if (quote.approvalAddress) {
@@ -487,38 +566,42 @@ Approval needed: ${quote.approvalAddress}`));
       process.exit(1);
     }
   });
-  earn.command("vaults").description("List available yield vaults from the LI.FI Earn API").option("--chain <chain>", "filter by chain (name or ID)").option("--protocol <protocol>", "filter by protocol slug").option("--token <token>", "filter by underlying token symbol").option("--category <category>", "filter by category (vault, lending, staking, yield)").option("--limit <limit>", "max results", "20").option("--offset <offset>", "pagination offset", "0").option("--json", "output as JSON").action(async (opts) => {
+  earn.command("vaults").description("List available yield vaults from the LI.FI Earn API").option("--chain <chain>", "filter by chain name or ID").option("--protocol <protocol>", "filter by protocol slug (e.g. morpho, aave-v3)").option("--token <token>", "filter by underlying token symbol").option("--tags <tags>", "filter by tags (comma-separated)").option("--limit <limit>", "max results", "20").option("--cursor <cursor>", "pagination cursor from previous response").option("--json", "output as JSON").action(async (opts) => {
     try {
-      const params = {
-        limit: parseInt(opts.limit),
-        offset: parseInt(opts.offset)
-      };
-      if (opts.chain) params.chainId = resolveChainId(opts.chain);
+      const params = { limit: parseInt(opts.limit) };
+      if (opts.chain) params.chainId = resolveChainId2(opts.chain);
       if (opts.protocol) params.protocol = opts.protocol;
       if (opts.token) params.underlyingToken = opts.token;
-      if (opts.category) params.category = opts.category;
-      const result = await withSpinner("Fetching vaults...", () => fetchVaults(params));
+      if (opts.tags) params.tags = opts.tags;
+      if (opts.cursor) params.cursor = opts.cursor;
+      const result = await withSpinner(
+        "Fetching vaults...",
+        () => fetchVaults(params)
+      );
       if (opts.json) {
         console.log(JSON.stringify(result, null, 2));
         return;
       }
-      if (!result.vaults.length) {
+      if (!result.data.length) {
         console.log(chalk4.yellow("No vaults found for the given filters."));
         return;
       }
       console.log(makeTable(
-        ["Name", "Protocol", "Chain", "Token", "APY", "TVL"],
-        result.vaults.map((v) => [
+        ["Name", "Protocol", "Chain", "Underlying", "APY", "TVL"],
+        result.data.map((v) => [
           v.name.slice(0, 30),
-          v.protocol,
+          v.protocol.name,
           String(v.chainId),
-          v.underlyingToken.symbol,
-          v.apy != null ? formatAPY(v.apy) : "n/a",
-          v.tvl != null ? `$${(v.tvl / 1e6).toFixed(1)}M` : "n/a"
+          v.underlyingTokens.map((t) => t.symbol).join(", "),
+          v.analytics?.apy?.total != null ? formatAPY(v.analytics.apy.total) : "n/a",
+          v.analytics?.tvl?.usd != null ? formatUSD(parseFloat(v.analytics.tvl.usd)) : "n/a"
         ])
       ));
       console.log(chalk4.dim(`
-Showing ${result.vaults.length} of ${result.total} vaults. Use --offset to paginate.`));
+Showing ${result.data.length} of ${result.total} vaults.`));
+      if (result.nextCursor) {
+        console.log(chalk4.dim(`Next page: --cursor ${result.nextCursor}`));
+      }
     } catch (err) {
       console.error(chalk4.red("Error:"), String(err));
       process.exit(1);
@@ -526,7 +609,10 @@ Showing ${result.vaults.length} of ${result.total} vaults. Use --offset to pagin
   });
   earn.command("vault <chainId> <address>").description("Get full details for a single vault").option("--json", "output as JSON").action(async (chainId, address, opts) => {
     try {
-      const vault = await withSpinner("Fetching vault...", () => fetchVault(parseInt(chainId), address));
+      const vault = await withSpinner(
+        "Fetching vault...",
+        () => fetchVault(parseInt(chainId), address)
+      );
       if (opts.json) {
         console.log(JSON.stringify(vault, null, 2));
         return;
@@ -535,14 +621,18 @@ Showing ${result.vaults.length} of ${result.total} vaults. Use --offset to pagin
         ["Field", "Value"],
         [
           ["Name", vault.name],
-          ["Protocol", vault.protocol],
+          ["Slug", vault.slug],
+          ["Protocol", vault.protocol.name],
           ["Chain", String(vault.chainId)],
           ["Address", vault.address],
-          ["Underlying", `${vault.underlyingToken.symbol} (${vault.underlyingToken.address})`],
-          ["Vault token", `${vault.vaultToken.symbol} (${vault.vaultToken.address})`],
-          ["APY", vault.apy != null ? formatAPY(vault.apy) : "n/a"],
-          ["TVL", vault.tvl != null ? `$${(vault.tvl / 1e6).toFixed(2)}M` : "n/a"],
-          ["Category", vault.category]
+          ["Underlying", vault.underlyingTokens.map((t) => `${t.symbol} (${t.address})`).join(", ")],
+          ["APY (total)", vault.analytics?.apy?.total != null ? formatAPY(vault.analytics.apy.total) : "n/a"],
+          ["APY (base)", vault.analytics?.apy?.base != null ? formatAPY(vault.analytics.apy.base) : "n/a"],
+          ["APY (reward)", vault.analytics?.apy?.reward != null ? formatAPY(vault.analytics.apy.reward) : "n/a"],
+          ["TVL", vault.analytics?.tvl?.usd != null ? formatUSD(parseFloat(vault.analytics.tvl.usd)) : "n/a"],
+          ["Tags", vault.tags?.join(", ") || "none"],
+          ["Redeemable", vault.isRedeemable ? "yes" : "no"],
+          ["Transactional", vault.isTransactional ? "yes" : "no"]
         ]
       ));
     } catch (err) {
@@ -558,54 +648,44 @@ Showing ${result.vaults.length} of ${result.total} vaults. Use --offset to pagin
         return;
       }
       console.log(makeTable(
-        ["Protocol", "Slug", "Vaults"],
-        protocols.map((p) => [p.name, p.slug, String(p.vaultCount)])
+        ["Protocol", "URL"],
+        protocols.map((p) => [p.name, p.url])
       ));
     } catch (err) {
       console.error(chalk4.red("Error:"), String(err));
       process.exit(1);
     }
   });
-  earn.command("chains").description("List chains with active vaults on LI.FI Earn").option("--json", "output as JSON").action(async (opts) => {
-    try {
-      const chains = await withSpinner("Fetching chains...", fetchEarnChains);
-      if (opts.json) {
-        console.log(JSON.stringify(chains, null, 2));
-        return;
-      }
-      console.log(makeTable(
-        ["Chain ID", "Name", "Vaults"],
-        chains.map((c) => [String(c.id), c.name, String(c.vaultCount)])
-      ));
-    } catch (err) {
-      console.error(chalk4.red("Error:"), String(err));
-      process.exit(1);
-    }
-  });
-  earn.command("portfolio <address>").description("Show all DeFi positions for a wallet address").option("--json", "output as JSON").action(async (address, opts) => {
+  earn.command("portfolio <address>").description("Show all active yield positions for a wallet address").option("--json", "output as JSON").action(async (address, opts) => {
     try {
       const portfolio = await withSpinner("Fetching portfolio...", () => fetchPortfolio(address));
       if (opts.json) {
         console.log(JSON.stringify(portfolio, null, 2));
         return;
       }
-      if (!portfolio.positions.length) {
+      if (!portfolio.positions?.length) {
         console.log(chalk4.yellow("No active positions found for this address."));
         return;
       }
+      let totalUsd = 0;
       console.log(makeTable(
-        ["Vault", "Protocol", "Token", "Balance", "APY", "Value (USD)"],
-        portfolio.positions.map((p) => [
-          p.vault.name.slice(0, 28),
-          p.vault.protocol,
-          p.vault.underlyingToken.symbol,
-          formatAmount(p.balance),
-          p.vault.apy != null ? formatAPY(p.vault.apy) : "n/a",
-          p.balanceUSD != null ? `$${p.balanceUSD.toFixed(2)}` : "n/a"
-        ])
+        ["Protocol", "Asset", "Balance", "Value (USD)", "Chain"],
+        portfolio.positions.map((p) => {
+          const usd = parseFloat(p.balanceUsd);
+          totalUsd += isNaN(usd) ? 0 : usd;
+          return [
+            p.protocolName,
+            p.asset.symbol,
+            parseFloat(p.balanceNative).toFixed(6),
+            formatUSD(p.balanceUsd),
+            String(p.chainId)
+          ];
+        })
       ));
-      console.log(chalk4.dim(`
-Total: $${portfolio.totalUSD?.toFixed(2) ?? "n/a"}`));
+      if (totalUsd > 0) {
+        console.log(chalk4.dim(`
+Total: ${formatUSD(totalUsd)}`));
+      }
     } catch (err) {
       console.error(chalk4.red("Error:"), String(err));
       process.exit(1);
@@ -635,7 +715,7 @@ function marketsCommand() {
       }
       console.log(makeTable(
         ["Question", "Yes %", "No %", "Volume", "Ends"],
-        results.slice(0, 20).map((m) => [
+        results.map((m) => [
           m.question.slice(0, 50) + (m.question.length > 50 ? "..." : ""),
           m.prices[0] != null ? `${(m.prices[0] * 100).toFixed(1)}%` : "n/a",
           m.prices[1] != null ? `${(m.prices[1] * 100).toFixed(1)}%` : "n/a",
@@ -1030,7 +1110,7 @@ function walletCommand() {
       }
       console.log(chalk10.green(`Wallet created: ${w.name}`));
       console.log(`Address: ${chalk10.cyan(w.address)}`);
-      console.log(chalk10.dim("Private key stored in OS keychain."));
+      console.log(chalk10.dim("Private key stored in ~/.lifi-cli/secrets.json (permissions: 600)."));
     } catch (err) {
       console.error(chalk10.red("Error:"), String(err));
       process.exit(1);
@@ -1069,8 +1149,9 @@ function walletCommand() {
 }
 
 // src/commands/agent.command.ts
+import readline2 from "readline";
 import { Command as Command10 } from "commander";
-import chalk12 from "chalk";
+import chalk13 from "chalk";
 
 // src/core/agent/agent.ts
 import readline from "readline";
@@ -1088,6 +1169,19 @@ function createOpenRouterClient() {
       "HTTP-Referer": "https://github.com/lifi-cli",
       "X-Title": "lifi-cli"
     }
+  });
+}
+function createAgentClient(provider, apiKey, baseUrl) {
+  const isOpenRouter = provider === "openrouter";
+  return new OpenAI({
+    apiKey: apiKey || "ollama",
+    baseURL: baseUrl,
+    ...isOpenRouter ? {
+      defaultHeaders: {
+        "HTTP-Referer": "https://github.com/lifi-cli",
+        "X-Title": "lifi-cli"
+      }
+    } : {}
   });
 }
 
@@ -1207,6 +1301,63 @@ var AGENT_TOOLS = [
   {
     type: "function",
     function: {
+      name: "dryrun_bridge",
+      description: "Simulate a cross-chain bridge without submitting \u2014 returns route, gas, approval requirements",
+      parameters: {
+        type: "object",
+        properties: {
+          fromChain: { type: "string", description: "Source chain name or ID" },
+          toChain: { type: "string", description: "Destination chain name or ID" },
+          fromToken: { type: "string", description: "Token to send" },
+          toToken: { type: "string", description: "Token to receive" },
+          amount: { type: "string", description: "Amount in token units" },
+          fromAddress: { type: "string", description: "Sender address (0x...)" },
+          slippage: { type: "number", description: "Slippage tolerance (default 0.005)" }
+        },
+        required: ["fromChain", "toChain", "fromToken", "toToken", "amount", "fromAddress"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "dryrun_swap",
+      description: "Simulate a single-chain token swap without submitting \u2014 returns route, price impact, gas",
+      parameters: {
+        type: "object",
+        properties: {
+          chain: { type: "string", description: "Chain name or ID" },
+          fromToken: { type: "string", description: "Token to swap from" },
+          toToken: { type: "string", description: "Token to swap to" },
+          amount: { type: "string", description: "Amount in token units" },
+          fromAddress: { type: "string", description: "Sender address (0x...)" },
+          slippage: { type: "number", description: "Slippage tolerance (default 0.005)" }
+        },
+        required: ["chain", "fromToken", "toToken", "amount", "fromAddress"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "dryrun_earn",
+      description: "Simulate a yield vault deposit without submitting \u2014 returns APY, TVL, projected yield, gas",
+      parameters: {
+        type: "object",
+        properties: {
+          protocol: { type: "string", description: "Protocol slug or vault address (0x...)" },
+          token: { type: "string", description: "Token to deposit" },
+          amount: { type: "string", description: "Amount in smallest unit" },
+          chain: { type: "string", description: "Chain name or ID" },
+          fromAddress: { type: "string", description: "Sender address (0x...)" }
+        },
+        required: ["protocol", "token", "amount", "chain", "fromAddress"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
       name: "get_tx_status",
       description: "Check the status of a cross-chain transaction",
       parameters: {
@@ -1291,6 +1442,57 @@ async function dispatchTool(name, args) {
         const markets = await getManifoldMarkets(args.query, args.limit ?? 20);
         return JSON.stringify(markets.slice(0, 10), null, 2);
       }
+      case "dryrun_bridge": {
+        const q = await getBridgeQuote({
+          fromChain: args.fromChain,
+          toChain: args.toChain,
+          fromToken: args.fromToken,
+          toToken: args.toToken,
+          amount: args.amount,
+          fromAddress: args.fromAddress,
+          slippage: args.slippage ?? 5e-3
+        });
+        return JSON.stringify({ dryRun: true, type: "bridge", quote: q }, null, 2);
+      }
+      case "dryrun_swap": {
+        const q = await getSwapQuote({
+          chain: args.chain,
+          fromToken: args.fromToken,
+          toToken: args.toToken,
+          amount: args.amount,
+          fromAddress: args.fromAddress,
+          slippage: args.slippage ?? 5e-3
+        });
+        const priceImpact = q.toAmountMin && q.toAmount ? ((1 - parseFloat(q.toAmountMin) / parseFloat(q.toAmount)) * 100).toFixed(3) : null;
+        return JSON.stringify({ dryRun: true, type: "swap", quote: q, priceImpact }, null, 2);
+      }
+      case "dryrun_earn": {
+        const chainId = CHAIN_IDS[String(args.chain).toLowerCase()] ?? parseInt(String(args.chain));
+        const q = await getEarnQuote({
+          protocol: args.protocol,
+          token: args.token,
+          amount: args.amount,
+          chain: args.chain,
+          fromAddress: args.fromAddress
+        });
+        let vault = null;
+        try {
+          if (args.protocol.startsWith("0x")) {
+            vault = await fetchVault(chainId, args.protocol);
+          } else {
+            const { data: vaults } = await fetchVaults({ chainId, protocol: args.protocol, limit: 1 });
+            vault = vaults[0] ?? null;
+          }
+        } catch {
+        }
+        const apy = vault?.analytics?.apy?.total ?? null;
+        const projectedYield = apy != null ? {
+          daily: parseFloat(args.amount) / 1e6 * apy / 365,
+          monthly: parseFloat(args.amount) / 1e6 * apy / 12,
+          annual: parseFloat(args.amount) / 1e6 * apy
+        } : null;
+        return JSON.stringify({ dryRun: true, type: "earn", quote: q, vault, projectedYield }, null, 2);
+      }
       case "get_tx_status": {
         const status = await getStatus(args.txHash, void 0, args.fromChain, args.toChain);
         return JSON.stringify(status, null, 2);
@@ -1303,7 +1505,7 @@ async function dispatchTool(name, args) {
   }
 }
 async function runAgent(config) {
-  const client = createOpenRouterClient();
+  const client = config.provider && config.apiKey ? createAgentClient(config.provider, config.apiKey, config.baseUrl) : createOpenRouterClient();
   const messages = [
     { role: "system", content: config.systemPrompt ?? DEFAULT_SYSTEM }
   ];
@@ -1344,20 +1546,143 @@ async function runAgent(config) {
   }
 }
 
+// src/core/agent/setup.ts
+import chalk12 from "chalk";
+var PROVIDERS = {
+  openrouter: { baseUrl: "https://openrouter.ai/api/v1", defaultModel: "anthropic/claude-3.5-sonnet" },
+  openai: { baseUrl: "https://api.openai.com/v1", defaultModel: "gpt-4o" },
+  ollama: { baseUrl: "http://localhost:11434/v1", defaultModel: "llama3" }
+};
+function ask(rl, q) {
+  return new Promise((resolve) => rl.question(q, resolve));
+}
+async function readMasked(prompt) {
+  return new Promise((resolve) => {
+    let buf = "";
+    process.stdin.setRawMode?.(true);
+    process.stdout.write(prompt);
+    const onData = (ch) => {
+      const c = ch.toString();
+      if (c === "\n" || c === "\r") {
+        process.stdin.removeListener("data", onData);
+        process.stdin.setRawMode?.(false);
+        process.stdout.write("\n");
+        resolve(buf.trim());
+        return;
+      }
+      if (c === "\x7F" || c === "\b") {
+        if (buf.length) {
+          buf = buf.slice(0, -1);
+          process.stdout.write("\b \b");
+        }
+        return;
+      }
+      if (c === "") process.exit(0);
+      buf += c;
+      process.stdout.write("*");
+    };
+    process.stdin.resume();
+    process.stdin.on("data", onData);
+  });
+}
+async function runAgentSetup(rl) {
+  const providerNames = Object.keys(PROVIDERS);
+  console.log();
+  console.log(chalk12.cyan("  Agent Setup"));
+  console.log(chalk12.dim("  " + "\u2500".repeat(40)));
+  console.log("  Providers:");
+  providerNames.forEach((p, i) => console.log(`    ${chalk12.yellow(String(i + 1))}. ${p}`));
+  console.log();
+  const provInput = (await ask(rl, chalk12.bold(chalk12.blue("  provider")) + " \u203A ")).trim();
+  const idx = parseInt(provInput);
+  let provider;
+  if (idx >= 1 && idx <= providerNames.length) {
+    provider = providerNames[idx - 1];
+  } else if (providerNames.includes(provInput.toLowerCase())) {
+    provider = provInput.toLowerCase();
+  } else {
+    console.log(chalk12.red("  Invalid provider"));
+    return null;
+  }
+  const defaults = PROVIDERS[provider];
+  const defaultModel = defaults.defaultModel;
+  const modelInput = (await ask(rl, chalk12.bold(chalk12.blue("  model")) + ` \u203A [${defaultModel}] `)).trim();
+  const model = modelInput || defaultModel;
+  let baseUrl = defaults.baseUrl;
+  if (provider === "ollama") {
+    const urlInput = (await ask(rl, chalk12.bold(chalk12.blue("  base url")) + ` \u203A [${defaults.baseUrl}] `)).trim();
+    if (urlInput) baseUrl = urlInput;
+  }
+  rl.pause();
+  const apiKey = await readMasked(chalk12.bold(chalk12.blue("  api key")) + " \u203A ");
+  rl.resume();
+  if (!apiKey && provider !== "ollama") {
+    console.log(chalk12.red("  API key required"));
+    return null;
+  }
+  console.log();
+  console.log(`  ${chalk12.dim("provider:")} ${chalk12.green(provider)}`);
+  console.log(`  ${chalk12.dim("model:   ")} ${chalk12.green(model)}`);
+  if (baseUrl !== PROVIDERS[provider]?.baseUrl) {
+    console.log(`  ${chalk12.dim("base url:")} ${chalk12.green(baseUrl)}`);
+  }
+  console.log(`  ${chalk12.dim("api key: ")} ${chalk12.green("*".repeat(Math.min(apiKey.length, 12)))}`);
+  console.log();
+  const confirm = (await ask(rl, chalk12.bold(chalk12.blue("  save?")) + " \u203A [Y/n] ")).trim().toLowerCase();
+  if (confirm === "n" || confirm === "no") return null;
+  saveConfig({
+    agentProvider: provider,
+    agentModel: model,
+    agentApiKey: apiKey || void 0,
+    agentBaseUrl: baseUrl !== PROVIDERS[provider]?.baseUrl ? baseUrl : void 0
+  });
+  return { provider, model, apiKey: apiKey || void 0, baseUrl };
+}
+function loadSavedAgentConfig() {
+  const provider = getConfigValue("agentProvider");
+  const model = getConfigValue("agentModel");
+  const apiKey = getConfigValue("agentApiKey");
+  const baseUrl = getConfigValue("agentBaseUrl");
+  if (!provider || !model) return null;
+  return {
+    provider,
+    model,
+    apiKey: apiKey || void 0,
+    baseUrl: baseUrl || PROVIDERS[provider]?.baseUrl
+  };
+}
+
 // src/commands/agent.command.ts
 function agentCommand() {
-  return new Command10("agent").description("Start an interactive AI agent with LI.FI tools (powered by OpenRouter)").option("--model <model>", "OpenRouter model ID", "anthropic/claude-3.5-sonnet").option("--system <prompt>", "override system prompt").action(async (opts) => {
+  return new Command10("agent").description("Start an interactive AI agent with LI.FI tools (powered by OpenRouter)").option("--model <model>", "model ID override").option("--system <prompt>", "override system prompt").option("--setup", "reconfigure agent provider and key").action(async (opts) => {
     try {
+      let config = loadSavedAgentConfig();
+      if (!config || opts.setup) {
+        if (!opts.setup && !config) {
+          console.log(chalk13.yellow("  No agent configured."));
+        }
+        const rl = readline2.createInterface({ input: process.stdin, output: process.stdout });
+        const saved = await runAgentSetup(rl);
+        rl.close();
+        if (!saved) {
+          console.log(chalk13.dim("  Setup cancelled."));
+          process.exit(0);
+        }
+        config = saved;
+        const rl2 = readline2.createInterface({ input: process.stdin, output: process.stdout });
+        rl2.close();
+      }
       await runAgent({
-        model: opts.model,
+        ...config,
+        model: opts.model ?? config.model,
         systemPrompt: opts.system
       });
     } catch (err) {
       if (String(err).includes("OPENROUTER_API_KEY")) {
-        console.error(chalk12.red("Error:"), String(err));
-        console.log(chalk12.dim("Set your key: lifi config set --openrouter-key <key>"));
+        console.error(chalk13.red("Error:"), String(err));
+        console.log(chalk13.dim("  Run: lifi agent --setup"));
       } else {
-        console.error(chalk12.red("Error:"), String(err));
+        console.error(chalk13.red("Error:"), String(err));
       }
       process.exit(1);
     }
@@ -1366,7 +1691,7 @@ function agentCommand() {
 
 // src/commands/config.command.ts
 import { Command as Command11 } from "commander";
-import chalk13 from "chalk";
+import chalk14 from "chalk";
 function configCommand() {
   const config = new Command11("config").description("Manage CLI configuration");
   config.command("set").description("Set configuration values").option("--api-key <key>", "LI.FI API key").option("--openrouter-key <key>", "OpenRouter API key").option("--polymarket-key <key>", "Polymarket API key").option("--kalshi-key <key>", "Kalshi API key (kalshi.com/api)").option("--chain <chain>", "default chain").option("--wallet <name>", "default wallet name").action((opts) => {
@@ -1378,11 +1703,11 @@ function configCommand() {
     if (opts.chain) updates.defaultChain = opts.chain;
     if (opts.wallet) updates.defaultWallet = opts.wallet;
     if (Object.keys(updates).length === 0) {
-      console.log(chalk13.yellow("No values provided. Use --help to see options."));
+      console.log(chalk14.yellow("No values provided. Use --help to see options."));
       return;
     }
     saveConfig(updates);
-    console.log(chalk13.green("Config updated."));
+    console.log(chalk14.green("Config updated."));
   });
   config.command("show").description("Show current configuration").action(() => {
     const cfg = loadConfig();
@@ -1402,14 +1727,252 @@ function configCommand() {
 import { Command as Command12 } from "commander";
 function mcpCommand() {
   return new Command12("mcp").description("Start MCP server over stdio (for Claude Code, Cursor, etc.)").action(async () => {
-    const { startMcpServer } = await import("./server-W5YCJ5GO.mjs");
+    const { startMcpServer } = await import("./server-GUJIVAWR.mjs");
     await startMcpServer();
   });
 }
 
+// src/commands/dryrun.command.ts
+import { Command as Command13 } from "commander";
+import chalk15 from "chalk";
+function resolveChainId3(chain) {
+  if (typeof chain === "number") return chain;
+  const id = CHAIN_IDS[String(chain).toLowerCase()];
+  if (!id) throw new Error(`Unknown chain: ${chain}`);
+  return id;
+}
+function dryRunHeader(label) {
+  console.log();
+  console.log(chalk15.yellow("  DRY RUN") + chalk15.dim(` \u2014 ${label}`));
+  console.log(chalk15.dim("  " + "\u2500".repeat(52)));
+}
+function dryRunFooter() {
+  console.log();
+  console.log(chalk15.dim("  " + "\u2500".repeat(52)));
+  console.log(chalk15.yellow("  Transaction NOT submitted.") + chalk15.dim(" Remove --dry-run to execute."));
+  console.log();
+}
+function dryrunCommand() {
+  const dryrun = new Command13("dryrun").description("Simulate a transaction without submitting it");
+  dryrun.command("bridge").description("Simulate a cross-chain bridge").requiredOption("--from <token>", "token to send (symbol or address)").requiredOption("--to <token>", "token to receive (symbol or address)").requiredOption("--from-chain <chain>", "source chain (name or ID)").requiredOption("--to-chain <chain>", "destination chain (name or ID)").requiredOption("--amount <amount>", "amount in human units (e.g. 100 for 100 USDC, 0.01 for 0.01 ETH)").requiredOption("--from-address <address>", "sender address (0x...)").option("--slippage <slippage>", "slippage tolerance", "0.005").option("--json", "output as JSON").action(async (opts) => {
+    try {
+      const rawAmount = await toSmallestUnit(opts.amount, opts.from, opts.fromChain);
+      const quote = await withSpinner(
+        "Simulating bridge...",
+        async () => getBridgeQuote({
+          fromChain: opts.fromChain,
+          toChain: opts.toChain,
+          fromToken: opts.from,
+          toToken: opts.to,
+          amount: rawAmount,
+          fromAddress: opts.fromAddress,
+          slippage: parseFloat(opts.slippage)
+        })
+      );
+      if (opts.json) {
+        console.log(JSON.stringify({ dryRun: true, type: "bridge", quote }, null, 2));
+        return;
+      }
+      dryRunHeader("bridge");
+      console.log(makeTable(
+        ["Field", "Value"],
+        [
+          ["From", `${formatTokenAmount(quote.fromAmount, quote.fromDecimals)} ${opts.from} on ${formatChain(quote.fromChain)}`],
+          ["To", `${formatTokenAmount(quote.toAmount, quote.toDecimals)} ${opts.to} on ${formatChain(quote.toChain)}`],
+          ["Min received", `${formatTokenAmount(quote.toAmountMin, quote.toDecimals)} ${opts.to}`],
+          ["Slippage", `${(parseFloat(opts.slippage) * 100).toFixed(2)}%`],
+          ["Bridge protocol", quote.tool],
+          ["Est. duration", `${quote.estimatedDuration}s (~${Math.ceil(quote.estimatedDuration / 60)} min)`],
+          ["Gas cost", `$${quote.gasCostUSD}`],
+          ["Approval needed", quote.approvalAddress ? chalk15.yellow("yes \u2014 " + quote.approvalAddress) : "no"],
+          ["Contract", quote.transactionRequest.to],
+          ["Gas limit", quote.transactionRequest.gasLimit]
+        ]
+      ));
+      dryRunFooter();
+    } catch (err) {
+      console.error(chalk15.red("Error:"), String(err));
+      process.exit(1);
+    }
+  });
+  dryrun.command("swap").description("Simulate a single-chain token swap").requiredOption("--from <token>", "token to swap from").requiredOption("--to <token>", "token to swap to").requiredOption("--amount <amount>", "amount in human units (e.g. 0.01 for 0.01 ETH, 100 for 100 USDC)").requiredOption("--from-address <address>", "sender address (0x...)").option("--chain <chain>", "chain name or ID", "base").option("--slippage <slippage>", "slippage tolerance", "0.005").option("--json", "output as JSON").action(async (opts) => {
+    try {
+      const rawAmount = await toSmallestUnit(opts.amount, opts.from, opts.chain);
+      const quote = await withSpinner(
+        "Simulating swap...",
+        async () => getSwapQuote({
+          chain: opts.chain,
+          fromToken: opts.from,
+          toToken: opts.to,
+          amount: rawAmount,
+          fromAddress: opts.fromAddress,
+          slippage: parseFloat(opts.slippage)
+        })
+      );
+      const priceImpact = quote.toAmountMin && quote.toAmount ? ((1 - parseFloat(quote.toAmountMin) / parseFloat(quote.toAmount)) * 100).toFixed(3) : "n/a";
+      if (opts.json) {
+        console.log(JSON.stringify({ dryRun: true, type: "swap", quote, priceImpact }, null, 2));
+        return;
+      }
+      dryRunHeader("swap");
+      console.log(makeTable(
+        ["Field", "Value"],
+        [
+          ["Chain", formatChain(quote.chain)],
+          ["From", `${formatTokenAmount(quote.fromAmount, quote.fromDecimals)} ${opts.from}`],
+          ["To", `${formatTokenAmount(quote.toAmount, quote.toDecimals)} ${opts.to}`],
+          ["Min received", `${formatTokenAmount(quote.toAmountMin, quote.toDecimals)} ${opts.to}`],
+          ["Price impact", `${priceImpact}%`],
+          ["Slippage", `${(parseFloat(opts.slippage) * 100).toFixed(2)}%`],
+          ["DEX", quote.tool],
+          ["Gas cost", `$${quote.gasCostUSD}`],
+          ["Approval needed", quote.approvalAddress ? chalk15.yellow("yes \u2014 " + quote.approvalAddress) : "no"],
+          ["Contract", quote.transactionRequest.to],
+          ["Gas limit", quote.transactionRequest.gasLimit]
+        ]
+      ));
+      dryRunFooter();
+    } catch (err) {
+      console.error(chalk15.red("Error:"), String(err));
+      process.exit(1);
+    }
+  });
+  dryrun.command("earn").description("Simulate a yield vault deposit").requiredOption("--protocol <protocol>", "protocol slug or vault address (0x...)").requiredOption("--token <token>", "token to deposit (symbol or address)").requiredOption("--amount <amount>", "amount in human units (e.g. 10 for 10 USDC)").requiredOption("--from-address <address>", "sender address (0x...)").option("--chain <chain>", "chain name or ID", "base").option("--json", "output as JSON").action(async (opts) => {
+    try {
+      const chainId = resolveChainId3(opts.chain);
+      const rawAmount = await toSmallestUnit(opts.amount, opts.token, opts.chain);
+      const [quote, vaultMeta] = await withSpinner("Simulating earn deposit...", async () => {
+        const q = await getEarnQuote({
+          protocol: opts.protocol,
+          token: opts.token,
+          amount: rawAmount,
+          chain: opts.chain,
+          fromAddress: opts.fromAddress
+        });
+        let vault = null;
+        try {
+          if (opts.protocol.startsWith("0x")) {
+            vault = await fetchVault(chainId, opts.protocol);
+          } else {
+            const { data: vaults } = await fetchVaults({ chainId, protocol: opts.protocol, limit: 1 });
+            vault = vaults[0] ?? null;
+          }
+        } catch {
+        }
+        return [q, vault];
+      });
+      if (opts.json) {
+        console.log(JSON.stringify({ dryRun: true, type: "earn", quote, vault: vaultMeta }, null, 2));
+        return;
+      }
+      const apy = vaultMeta?.analytics?.apy?.total ?? quote.estimatedApy ?? null;
+      const tvlUsd = vaultMeta?.analytics?.tvl?.usd != null ? parseFloat(vaultMeta.analytics.tvl.usd) : null;
+      const underlying = vaultMeta?.underlyingTokens?.map((t) => t.symbol).join(", ") ?? opts.token;
+      dryRunHeader("earn deposit");
+      console.log(makeTable(
+        ["Field", "Value"],
+        [
+          ["Vault", quote.protocol],
+          ["Slug", quote.vaultSlug],
+          ["Chain", formatChain(chainId)],
+          ["Underlying", underlying],
+          ["Deposit", `${opts.amount} ${quote.fromToken}`],
+          ["Vault tokens received", formatAmount(quote.toAmount)],
+          ["APY (total)", apy != null ? formatAPY(apy) : "n/a"],
+          ["APY (base)", vaultMeta?.analytics?.apy?.base != null ? formatAPY(vaultMeta.analytics.apy.base) : "n/a"],
+          ["APY (reward)", vaultMeta?.analytics?.apy?.reward != null ? formatAPY(vaultMeta.analytics.apy.reward) : "n/a"],
+          ["TVL", tvlUsd != null ? formatUSD(tvlUsd) : "n/a"],
+          ["Protocol", vaultMeta?.protocol?.name ?? "n/a"],
+          ["Vault address", quote.vaultAddress],
+          ["Est. duration", `${quote.estimatedDuration}s`],
+          ["Gas cost", `$${quote.gasCostUSD}`],
+          ["Approval needed", quote.approvalAddress ? chalk15.yellow("yes \u2014 " + quote.approvalAddress) : "no"],
+          ["Contract", quote.transactionRequest.to]
+        ]
+      ));
+      if (apy != null) {
+        const depositUnits = parseFloat(opts.amount);
+        const dailyYield = depositUnits * apy / 365;
+        const monthlyYield = dailyYield * 30;
+        console.log();
+        console.log(chalk15.dim("  Projected yield (on deposit):"));
+        console.log(`    daily   ${chalk15.cyan(formatUSD(dailyYield))}`);
+        console.log(`    monthly ${chalk15.cyan(formatUSD(monthlyYield))}`);
+      }
+      dryRunFooter();
+    } catch (err) {
+      console.error(chalk15.red("Error:"), String(err));
+      process.exit(1);
+    }
+  });
+  return dryrun;
+}
+
+// src/commands/reset.command.ts
+import readline3 from "readline";
+import fs3 from "fs";
+import { Command as Command14 } from "commander";
+import chalk16 from "chalk";
+function ask2(rl, q) {
+  return new Promise((resolve) => rl.question(q, resolve));
+}
+function resetCommand() {
+  return new Command14("reset").description("Remove all lifi-cli config and saved data").option("--wallets", "also delete saved wallets (irreversible)").option("--yes", "skip confirmation prompt").action(async (opts) => {
+    const rl = readline3.createInterface({ input: process.stdin, output: process.stdout });
+    console.log();
+    console.log(chalk16.yellow("  This will delete:"));
+    console.log(chalk16.dim(`    config  ${CONFIG_FILE}`));
+    if (opts.wallets) {
+      console.log(chalk16.red(`    wallets ${WALLETS_DIR}  (private keys \u2014 unrecoverable)`));
+    }
+    console.log();
+    if (!opts.yes) {
+      const answer = (await ask2(rl, chalk16.bold("  Continue? [y/N] "))).trim().toLowerCase();
+      if (answer !== "y" && answer !== "yes") {
+        console.log(chalk16.dim("  Cancelled."));
+        rl.close();
+        return;
+      }
+    }
+    if (opts.wallets) {
+      const confirm2 = opts.yes ? "yes" : (await ask2(rl, chalk16.red("  Delete wallets? This cannot be undone. [yes/N] "))).trim().toLowerCase();
+      if (confirm2 !== "yes") {
+        console.log(chalk16.dim("  Wallet deletion skipped."));
+        opts.wallets = false;
+      }
+    }
+    rl.close();
+    try {
+      if (fs3.existsSync(CONFIG_FILE)) {
+        fs3.unlinkSync(CONFIG_FILE);
+        console.log(chalk16.green("  config cleared"));
+      } else {
+        console.log(chalk16.dim("  no config found"));
+      }
+    } catch (err) {
+      console.error(chalk16.red("  failed to remove config:"), String(err));
+    }
+    if (opts.wallets) {
+      try {
+        if (fs3.existsSync(WALLETS_DIR)) {
+          fs3.rmSync(WALLETS_DIR, { recursive: true, force: true });
+          console.log(chalk16.green("  wallets deleted"));
+        } else {
+          console.log(chalk16.dim("  no wallets found"));
+        }
+      } catch (err) {
+        console.error(chalk16.red("  failed to remove wallets:"), String(err));
+      }
+    }
+    console.log();
+    console.log(chalk16.dim("  Done. Run lifi-cli to start fresh."));
+    console.log();
+  });
+}
+
 // src/cli.ts
-var VERSION = "0.1.0";
-var program = new Command13();
+var VERSION = "0.1.5";
+var program = new Command15();
 program.name("lifi").description("LI.FI CLI \u2014 bridge, swap, earn, and bet from the terminal.").version(VERSION).action(() => {
   printClibanner(VERSION);
   program.help();
@@ -1426,5 +1989,7 @@ program.addCommand(walletCommand());
 program.addCommand(agentCommand());
 program.addCommand(configCommand());
 program.addCommand(mcpCommand());
+program.addCommand(dryrunCommand());
+program.addCommand(resetCommand());
 program.parse();
 //# sourceMappingURL=cli.mjs.map

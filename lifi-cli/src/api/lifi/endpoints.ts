@@ -29,23 +29,33 @@ export interface RouteStep {
     fromAmount: string
     toAmount: string
     toAmountMin: string
-    gasCosts: Array<{ amount: string; token: { symbol: string } }>
+    gasCosts: Array<{ amount: string; amountUSD: string; token: { symbol: string } }>
     executionDuration: number
   }
+}
+
+export interface TokenInfo {
+  symbol: string
+  address: string
+  decimals: number
+  chainId: number
+  name: string
 }
 
 export interface QuoteResponse {
   id: string
   type: string
-  action: QuoteParams
+  action: QuoteParams & { fromToken?: TokenInfo; toToken?: TokenInfo }
   estimate: {
     fromAmount: string
     toAmount: string
     toAmountMin: string
     approvalAddress: string
     executionDuration: number
-    gasCosts: Array<{ amount: string; token: { symbol: string } }>
+    gasCosts: Array<{ amount: string; amountUSD: string; token: { symbol: string } }>
   }
+  tool: string
+  toolDetails: { key: string; name: string; logoURI?: string }
   steps: RouteStep[]
   transactionRequest: {
     to: string

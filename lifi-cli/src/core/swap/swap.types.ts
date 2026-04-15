@@ -17,6 +17,8 @@ export interface SwapQuote {
   fromAmount: string
   toAmount: string
   toAmountMin: string
+  fromDecimals: number
+  toDecimals: number
   estimatedDuration: number
   gasCostUSD: string
   tool: string

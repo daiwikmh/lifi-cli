@@ -14,55 +14,77 @@ function createEarnClient() {
   })
 }
 
-export interface Vault {
-  chainId: number
+export interface UnderlyingToken {
+  symbol: string
   address: string
+  decimals: number
+}
+
+export interface VaultAnalytics {
+  apy: {
+    base: number
+    total: number
+    reward: number | null
+  }
+  tvl: {
+    usd: string
+  }
+  apy1d: number | null
+  apy7d: number | null
+  apy30d: number | null
+  updatedAt: string
+}
+
+export interface Vault {
   name: string
-  protocol: string
-  underlyingToken: { symbol: string; address: string; decimals: number }
-  vaultToken: { symbol: string; address: string; decimals: number }
-  apy: number
-  tvl: number
-  category: string
+  slug: string
+  address: string
+  chainId: number
+  network: string
+  tags: string[]
+  protocol: { name: string; url: string }
+  provider: string
+  description: string
+  analytics: VaultAnalytics
+  underlyingTokens: UnderlyingToken[]
+  depositPacks: Array<{ name: string; stepsType: string }>
+  redeemPacks: Array<{ name: string; stepsType: string }>
+  isRedeemable: boolean
+  isTransactional: boolean
+  syncedAt: string
 }
 
 export interface VaultListParams {
   chainId?: number
   protocol?: string
   underlyingToken?: string
-  category?: string
+  tags?: string
   limit?: number
-  offset?: number
+  cursor?: string
 }
 
 export interface VaultListResponse {
-  vaults: Vault[]
+  data: Vault[]
+  nextCursor: string | null
   total: number
-  limit: number
-  offset: number
-}
-
-export interface EarnChain {
-  id: number
-  name: string
-  vaultCount: number
 }
 
 export interface EarnProtocol {
   name: string
-  slug: string
-  vaultCount: number
+  url: string
 }
 
 export interface Position {
-  vault: Vault
-  balance: string
-  balanceUSD: number
+  chainId: number
+  address: string
+  protocolName: string
+  asset: { address: string; name: string; symbol: string; decimals: number }
+  balanceUsd: string
+  balanceNative: string
 }
 
 export interface PortfolioResponse {
   positions: Position[]
-  totalUSD: number
 }
 
 const client = createEarnClient()
@@ -77,14 +99,9 @@ export async function getVault(chainId: number, address: string): Promise<Vault>
   return data
 }
 
-export async function listEarnChains(): Promise<EarnChain[]> {
-  const { data } = await client.get('/chains')
-  return data.chains ?? data
-}
-
 export async function listEarnProtocols(): Promise<EarnProtocol[]> {
   const { data } = await client.get('/protocols')
-  return data.protocols ?? data
+  return Array.isArray(data) ? data : (data.protocols ?? [])
 }
 
 export async function getPortfolio(userAddress: string): Promise<PortfolioResponse> {

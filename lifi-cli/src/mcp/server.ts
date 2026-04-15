@@ -10,6 +10,9 @@ import {
   listMarketsTool,
   getMarketTool,
   statusTool,
+  dryrunBridgeTool,
+  dryrunSwapTool,
+  dryrunEarnTool,
 } from './tools/index.js'
 import type { McpToolDef } from './tools/index.js'
 
@@ -22,6 +25,9 @@ const ALL_TOOLS: McpToolDef[] = [
   listMarketsTool,
   getMarketTool,
   statusTool,
+  dryrunBridgeTool,
+  dryrunSwapTool,
+  dryrunEarnTool,
 ]
 
 export async function startMcpServer(): Promise<void> {

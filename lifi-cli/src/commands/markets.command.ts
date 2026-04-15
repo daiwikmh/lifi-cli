@@ -30,7 +30,7 @@ export function marketsCommand(): Command {
 
         console.log(makeTable(
           ['Question', 'Yes %', 'No %', 'Volume', 'Ends'],
-          results.slice(0, 20).map((m) => [
+          results.map((m) => [
             m.question.slice(0, 50) + (m.question.length > 50 ? '...' : ''),
             m.prices[0] != null ? `${(m.prices[0] * 100).toFixed(1)}%` : 'n/a',
             m.prices[1] != null ? `${(m.prices[1] * 100).toFixed(1)}%` : 'n/a',

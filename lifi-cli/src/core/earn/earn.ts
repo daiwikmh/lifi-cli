@@ -1,10 +1,10 @@
 import { getQuote } from '../../api/lifi/index.js'
-import { listVaults, getVault, listEarnChains, listEarnProtocols, getPortfolio } from '../../api/lifi/earn.js'
+import { listVaults, getVault, listEarnProtocols, getPortfolio } from '../../api/lifi/earn.js'
 import { CHAIN_IDS } from '../../config/index.js'
 import type { EarnParams, EarnQuote } from './earn.types.js'
-import type { Vault, VaultListParams, EarnChain, EarnProtocol, PortfolioResponse } from '../../api/lifi/earn.js'
+import type { Vault, VaultListParams, EarnProtocol, PortfolioResponse } from '../../api/lifi/earn.js'
 
-export type { Vault, EarnChain, EarnProtocol, PortfolioResponse }
+export type { Vault, VaultListParams, EarnProtocol, PortfolioResponse }
 
 function resolveChainId(chain: string | number): number {
   if (typeof chain === 'number') return chain
@@ -13,49 +13,65 @@ function resolveChainId(chain: string | number): number {
   return id
 }
 
-export async function getEarnQuote(params: EarnParams): Promise<EarnQuote> {
-  const chainId = resolveChainId(params.chain)
-
-  // resolve vault: params.protocol can be a vault address or a protocol slug
-  let vault: Vault | undefined
-  if (params.protocol.startsWith('0x')) {
-    vault = await getVault(chainId, params.protocol)
-  } else {
-    const { vaults } = await listVaults({
-      chainId,
-      protocol: params.protocol,
-      underlyingToken: params.token,
-      limit: 1,
-    })
-    vault = vaults[0]
+async function resolveVault(protocol: string, chainId: number, token?: string): Promise<Vault> {
+  // vault address passed directly
+  if (protocol.startsWith('0x')) {
+    return getVault(chainId, protocol)
   }
 
-  if (!vault) {
+  // protocol slug — find best matching vault
+  const params: VaultListParams = { chainId, protocol, limit: 5 }
+  if (token) params.underlyingToken = token
+
+  const { data: vaults } = await listVaults(params)
+
+  if (!vaults.length) {
     throw new Error(
-      `No vault found for protocol "${params.protocol}" on chain ${chainId}. ` +
+      `No vault found for protocol "${protocol}" on chain ${chainId}. ` +
       `Run 'lifi earn vaults' to see available vaults.`
     )
   }
 
+  // prefer vault whose underlying token matches
+  if (token) {
+    const match = vaults.find((v) =>
+      v.underlyingTokens.some((t) => t.symbol.toLowerCase() === token.toLowerCase())
+    )
+    if (match) return match
+  }
+
+  return vaults[0]
+}
+
+export async function getEarnQuote(params: EarnParams): Promise<EarnQuote> {
+  const chainId = resolveChainId(params.chain)
+  const vault = await resolveVault(params.protocol, chainId, params.token)
+
+  // Composer: same /quote endpoint, toToken = vault address
   const response = await getQuote({
     fromChain: chainId,
     toChain: vault.chainId,
     fromToken: params.token,
-    toToken: vault.vaultToken.address,
+    toToken: vault.address,       // vault address IS the toToken
     fromAmount: params.amount,
     fromAddress: params.fromAddress,
     toAddress: params.fromAddress,
   })
 
+  const apy = vault.analytics?.apy?.total ?? null
+  const underlying = vault.underlyingTokens[0]
+
   return {
     protocol: vault.name,
-    fromToken: params.token,
-    toToken: vault.vaultToken.symbol,
+    vaultSlug: vault.slug,
+    vaultAddress: vault.address,
+    fromToken: underlying?.symbol ?? params.token,
+    toToken: vault.name,
     fromAmount: response.estimate.fromAmount,
     toAmount: response.estimate.toAmount,
-    estimatedApy: vault.apy,
+    estimatedApy: apy,
     estimatedDuration: response.estimate.executionDuration,
-    gasCostUSD: response.estimate.gasCosts?.[0]?.amount ?? '0',
+    gasCostUSD: response.estimate.gasCosts?.[0]?.amountUSD ?? '0',
     transactionRequest: response.transactionRequest as EarnQuote['transactionRequest'],
     approvalAddress: response.estimate.approvalAddress as EarnQuote['approvalAddress'],
   }
@@ -67,10 +83,6 @@ export async function fetchVaults(params?: VaultListParams) {
 
 export async function fetchVault(chainId: number, address: string) {
   return getVault(chainId, address)
-}
-
-export async function fetchEarnChains(): Promise<EarnChain[]> {
-  return listEarnChains()
 }
 
 export async function fetchEarnProtocols(): Promise<EarnProtocol[]> {

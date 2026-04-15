@@ -20,7 +20,7 @@ export function walletCommand(): Command {
         }
         console.log(chalk.green(`Wallet created: ${w.name}`))
         console.log(`Address: ${chalk.cyan(w.address)}`)
-        console.log(chalk.dim('Private key stored in OS keychain.'))
+        console.log(chalk.dim('Private key stored in ~/.lifi-cli/secrets.json (permissions: 600).'))
       } catch (err) {
         console.error(chalk.red('Error:'), String(err))
         process.exit(1)

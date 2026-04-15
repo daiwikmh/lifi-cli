@@ -13,3 +13,17 @@ export function createOpenRouterClient(): OpenAI {
     },
   })
 }
+
+export function createAgentClient(provider: string, apiKey: string, baseUrl?: string): OpenAI {
+  const isOpenRouter = provider === 'openrouter'
+  return new OpenAI({
+    apiKey: apiKey || 'ollama',
+    baseURL: baseUrl,
+    ...(isOpenRouter ? {
+      defaultHeaders: {
+        'HTTP-Referer': 'https://github.com/lifi-cli',
+        'X-Title': 'lifi-cli',
+      },
+    } : {}),
+  })
+}

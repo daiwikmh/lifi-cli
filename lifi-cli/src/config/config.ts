@@ -9,6 +9,10 @@ interface Config {
   kalshiApiKey?: string
   defaultChain?: string
   defaultWallet?: string
+  agentProvider?: string
+  agentModel?: string
+  agentApiKey?: string
+  agentBaseUrl?: string
 }
 
 function ensureConfigDir(): void {
@@ -42,6 +46,10 @@ export function getConfigValue<K extends keyof Config>(key: K): Config[K] {
     kalshiApiKey: 'KALSHI_API_KEY',
     defaultChain: 'DEFAULT_CHAIN',
     defaultWallet: 'DEFAULT_WALLET',
+    agentProvider: 'AGENT_PROVIDER',
+    agentModel: 'AGENT_MODEL',
+    agentApiKey: 'AGENT_API_KEY',
+    agentBaseUrl: 'AGENT_BASE_URL',
   }
   const fromEnv = process.env[envMap[key]]
   if (fromEnv) return fromEnv as Config[K]

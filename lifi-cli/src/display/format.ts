@@ -3,6 +3,11 @@ export function formatAmount(amount: string | number, decimals = 6): string {
   return n.toLocaleString('en-US', { maximumFractionDigits: decimals })
 }
 
+export function formatTokenAmount(rawAmount: string, tokenDecimals: number, displayDecimals = 6): string {
+  const n = parseFloat(rawAmount) / Math.pow(10, tokenDecimals)
+  return n.toLocaleString('en-US', { maximumFractionDigits: displayDecimals })
+}
+
 export function formatAddress(addr: string): string {
   return `${addr.slice(0, 6)}...${addr.slice(-4)}`
 }
@@ -11,8 +16,9 @@ export function formatAPY(apy: number): string {
   return `${(apy * 100).toFixed(2)}%`
 }
 
-export function formatUSD(amount: number): string {
-  return `$${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+export function formatUSD(amount: number | string): string {
+  const n = typeof amount === 'string' ? parseFloat(amount) : amount
+  return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
 export function formatChain(chainId: number): string {

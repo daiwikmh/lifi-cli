@@ -31,7 +31,9 @@ const sections = [
         href: "/docs/earn",
         children: [
           { title: "lifi earn quote", href: "/docs/earn#quote" },
+          { title: "lifi earn vaults", href: "/docs/earn#vaults" },
           { title: "lifi earn protocols", href: "/docs/earn#protocols" },
+          { title: "lifi earn portfolio", href: "/docs/earn#portfolio" },
         ],
       },
       {
@@ -72,18 +74,20 @@ const sections = [
         href: "/docs/agent",
         children: [
           { title: "Usage", href: "/docs/agent#usage" },
+          { title: "Setup", href: "/docs/agent#setup" },
           { title: "Tools", href: "/docs/agent#tools" },
         ],
       },
-      {
-        title: "Status",
-        href: "/docs/status",
-      },
+      { title: "Status", href: "/docs/status" },
+      { title: "Reset", href: "/docs/reset" },
     ],
   },
   {
     label: "Reference",
-    items: [{ title: "MCP Tools", href: "/docs/mcp" }],
+    items: [
+      { title: "MCP Tools", href: "/docs/mcp" },
+      { title: "Playground", href: "/playground/earn" },
+    ],
   },
 ];
 

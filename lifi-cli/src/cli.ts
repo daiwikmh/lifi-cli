@@ -13,9 +13,11 @@ import {
   agentCommand,
   configCommand,
   mcpCommand,
+  dryrunCommand,
+  resetCommand,
 } from './commands/index.js'
 
-const VERSION = '0.1.0'
+const VERSION = '0.1.5'
 
 const program = new Command()
 
@@ -40,5 +42,7 @@ program.addCommand(walletCommand())
 program.addCommand(agentCommand())
 program.addCommand(configCommand())
 program.addCommand(mcpCommand())
+program.addCommand(dryrunCommand())
+program.addCommand(resetCommand())
 
 program.parse()

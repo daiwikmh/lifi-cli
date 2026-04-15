@@ -30,9 +30,11 @@ export async function getSwapQuote(params: SwapParams): Promise<SwapQuote> {
     fromAmount: response.estimate.fromAmount,
     toAmount: response.estimate.toAmount,
     toAmountMin: response.estimate.toAmountMin,
+    fromDecimals: response.action.fromToken?.decimals ?? 18,
+    toDecimals: response.action.toToken?.decimals ?? 18,
     estimatedDuration: response.estimate.executionDuration,
-    gasCostUSD: response.estimate.gasCosts?.[0]?.amount ?? '0',
-    tool: response.steps?.[0]?.tool ?? 'unknown',
+    gasCostUSD: response.estimate.gasCosts?.[0]?.amountUSD ?? '0',
+    tool: response.toolDetails?.name ?? response.tool ?? 'unknown',
     transactionRequest: response.transactionRequest as SwapQuote['transactionRequest'],
     approvalAddress: response.estimate.approvalAddress as SwapQuote['approvalAddress'],
   }

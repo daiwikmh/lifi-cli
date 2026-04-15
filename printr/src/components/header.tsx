@@ -18,12 +18,20 @@ export const Header = () => {
             </Link>
           ))}
         </nav>
-        <Link
-          className="uppercase transition-colors ease-out duration-150 font-mono text-primary hover:text-primary/80 text-sm"
-          href="/docs/mcp"
-        >
-          MCP Tools
-        </Link>
+        <div className="flex items-center gap-6">
+          <Link
+            className="uppercase transition-colors ease-out duration-150 font-mono text-primary hover:text-primary/80 text-sm"
+            href="/docs/mcp"
+          >
+            MCP Tools
+          </Link>
+          <Link
+            className="uppercase transition-colors ease-out duration-150 font-mono text-neon-cyan/70 hover:text-neon-cyan text-sm"
+            href="/playground/earn"
+          >
+            Playground
+          </Link>
+        </div>
       </header>
     </div>
   );

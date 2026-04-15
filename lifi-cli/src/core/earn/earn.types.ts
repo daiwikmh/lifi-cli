@@ -10,11 +10,13 @@ export interface EarnParams {
 
 export interface EarnQuote {
   protocol: string
+  vaultSlug: string
+  vaultAddress: string
   fromToken: string
   toToken: string
   fromAmount: string
   toAmount: string
-  estimatedApy?: number
+  estimatedApy: number | null
   estimatedDuration: number
   gasCostUSD: string
   transactionRequest: {

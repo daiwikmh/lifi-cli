@@ -1,10 +1,10 @@
 import readline from 'readline'
 import chalk from 'chalk'
 import { printAgentBanner } from '../../display/banner.js'
-import { createOpenRouterClient } from '../../api/openrouter/index.js'
+import { createOpenRouterClient, createAgentClient } from '../../api/openrouter/index.js'
 import { getBridgeQuote } from '../bridge/index.js'
 import { getSwapQuote } from '../swap/index.js'
-import { getEarnQuote, fetchVaults, fetchEarnProtocols, fetchPortfolio } from '../earn/index.js'
+import { getEarnQuote, fetchVaults, fetchVault, fetchEarnProtocols, fetchPortfolio } from '../earn/index.js'
 import { getMarkets } from '../markets/index.js'
 import { getKalshiMarkets } from '../kalshi/index.js'
 import { getManifoldMarkets } from '../manifold/index.js'
@@ -54,6 +54,58 @@ async function dispatchTool(name: string, args: Record<string, unknown>): Promis
         const markets = await getManifoldMarkets(args.query as string | undefined, (args.limit as number) ?? 20)
         return JSON.stringify(markets.slice(0, 10), null, 2)
       }
+      case 'dryrun_bridge': {
+        const q = await getBridgeQuote({
+          fromChain: args.fromChain as string,
+          toChain: args.toChain as string,
+          fromToken: args.fromToken as string,
+          toToken: args.toToken as string,
+          amount: args.amount as string,
+          fromAddress: args.fromAddress as `0x${string}`,
+          slippage: (args.slippage as number) ?? 0.005,
+        })
+        return JSON.stringify({ dryRun: true, type: 'bridge', quote: q }, null, 2)
+      }
+      case 'dryrun_swap': {
+        const q = await getSwapQuote({
+          chain: args.chain as string,
+          fromToken: args.fromToken as string,
+          toToken: args.toToken as string,
+          amount: args.amount as string,
+          fromAddress: args.fromAddress as `0x${string}`,
+          slippage: (args.slippage as number) ?? 0.005,
+        })
+        const priceImpact = q.toAmountMin && q.toAmount
+          ? ((1 - parseFloat(q.toAmountMin) / parseFloat(q.toAmount)) * 100).toFixed(3)
+          : null
+        return JSON.stringify({ dryRun: true, type: 'swap', quote: q, priceImpact }, null, 2)
+      }
+      case 'dryrun_earn': {
+        const chainId = CHAIN_IDS[String(args.chain).toLowerCase()] ?? parseInt(String(args.chain))
+        const q = await getEarnQuote({
+          protocol: args.protocol as string,
+          token: args.token as string,
+          amount: args.amount as string,
+          chain: args.chain as string,
+          fromAddress: args.fromAddress as `0x${string}`,
+        })
+        let vault = null
+        try {
+          if ((args.protocol as string).startsWith('0x')) {
+            vault = await fetchVault(chainId, args.protocol as string)
+          } else {
+            const { data: vaults } = await fetchVaults({ chainId, protocol: args.protocol as string, limit: 1 })
+            vault = vaults[0] ?? null
+          }
+        } catch { /* best-effort */ }
+        const apy = vault?.analytics?.apy?.total ?? null
+        const projectedYield = apy != null ? {
+          daily: (parseFloat(args.amount as string) / 1e6) * apy / 365,
+          monthly: (parseFloat(args.amount as string) / 1e6) * apy / 12,
+          annual: (parseFloat(args.amount as string) / 1e6) * apy,
+        } : null
+        return JSON.stringify({ dryRun: true, type: 'earn', quote: q, vault, projectedYield }, null, 2)
+      }
       case 'get_tx_status': {
         const status = await getStatus(args.txHash as string, undefined, args.fromChain as number, args.toChain as number)
         return JSON.stringify(status, null, 2)
@@ -67,7 +119,9 @@ async function dispatchTool(name: string, args: Record<string, unknown>): Promis
 }
 
 export async function runAgent(config: AgentConfig): Promise<void> {
-  const client = createOpenRouterClient()
+  const client = config.provider && config.apiKey
+    ? createAgentClient(config.provider, config.apiKey, config.baseUrl)
+    : createOpenRouterClient()
   const messages: AgentMessage[] = [
     { role: 'system', content: config.systemPrompt ?? DEFAULT_SYSTEM },
   ]

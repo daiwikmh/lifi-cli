@@ -53,6 +53,8 @@ interface BridgeQuote {
     fromAmount: string;
     toAmount: string;
     toAmountMin: string;
+    fromDecimals: number;
+    toDecimals: number;
     estimatedDuration: number;
     gasCostUSD: string;
     tool: string;
@@ -91,6 +93,8 @@ interface SwapQuote {
     fromAmount: string;
     toAmount: string;
     toAmountMin: string;
+    fromDecimals: number;
+    toDecimals: number;
     estimatedDuration: number;
     gasCostUSD: string;
     tool: string;
@@ -112,57 +116,84 @@ interface SwapResult {
 
 declare function getSwapQuote(params: SwapParams): Promise<SwapQuote>;
 
-interface Vault {
-    chainId: number;
+interface UnderlyingToken {
+    symbol: string;
     address: string;
+    decimals: number;
+}
+interface VaultAnalytics {
+    apy: {
+        base: number;
+        total: number;
+        reward: number | null;
+    };
+    tvl: {
+        usd: string;
+    };
+    apy1d: number | null;
+    apy7d: number | null;
+    apy30d: number | null;
+    updatedAt: string;
+}
+interface Vault {
     name: string;
-    protocol: string;
-    underlyingToken: {
-        symbol: string;
-        address: string;
-        decimals: number;
+    slug: string;
+    address: string;
+    chainId: number;
+    network: string;
+    tags: string[];
+    protocol: {
+        name: string;
+        url: string;
     };
-    vaultToken: {
-        symbol: string;
-        address: string;
-        decimals: number;
-    };
-    apy: number;
-    tvl: number;
-    category: string;
+    provider: string;
+    description: string;
+    analytics: VaultAnalytics;
+    underlyingTokens: UnderlyingToken[];
+    depositPacks: Array<{
+        name: string;
+        stepsType: string;
+    }>;
+    redeemPacks: Array<{
+        name: string;
+        stepsType: string;
+    }>;
+    isRedeemable: boolean;
+    isTransactional: boolean;
+    syncedAt: string;
 }
 interface VaultListParams {
     chainId?: number;
     protocol?: string;
     underlyingToken?: string;
-    category?: string;
+    tags?: string;
     limit?: number;
-    offset?: number;
+    cursor?: string;
 }
 interface VaultListResponse {
-    vaults: Vault[];
+    data: Vault[];
+    nextCursor: string | null;
     total: number;
-    limit: number;
-    offset: number;
-}
-interface EarnChain {
-    id: number;
-    name: string;
-    vaultCount: number;
 }
 interface EarnProtocol {
     name: string;
-    slug: string;
-    vaultCount: number;
+    url: string;
 }
 interface Position {
-    vault: Vault;
-    balance: string;
-    balanceUSD: number;
+    chainId: number;
+    address: string;
+    protocolName: string;
+    asset: {
+        address: string;
+        name: string;
+        symbol: string;
+        decimals: number;
+    };
+    balanceUsd: string;
+    balanceNative: string;
 }
 interface PortfolioResponse {
     positions: Position[];
-    totalUSD: number;
 }
 
 interface EarnParams {
@@ -174,11 +205,13 @@ interface EarnParams {
 }
 interface EarnQuote {
     protocol: string;
+    vaultSlug: string;
+    vaultAddress: string;
     fromToken: string;
     toToken: string;
     fromAmount: string;
     toAmount: string;
-    estimatedApy?: number;
+    estimatedApy: number | null;
     estimatedDuration: number;
     gasCostUSD: string;
     transactionRequest: {
@@ -195,7 +228,6 @@ interface EarnQuote {
 declare function getEarnQuote(params: EarnParams): Promise<EarnQuote>;
 declare function fetchVaults(params?: VaultListParams): Promise<VaultListResponse>;
 declare function fetchVault(chainId: number, address: string): Promise<Vault>;
-declare function fetchEarnChains(): Promise<EarnChain[]>;
 declare function fetchEarnProtocols(): Promise<EarnProtocol[]>;
 declare function fetchPortfolio(userAddress: string): Promise<PortfolioResponse>;
 
@@ -231,6 +263,9 @@ interface PolymarketPosition {
 
 interface AgentConfig {
     model: string;
+    provider?: string;
+    apiKey?: string;
+    baseUrl?: string;
     systemPrompt?: string;
     maxIterations?: number;
 }
@@ -270,6 +305,10 @@ interface Config {
     kalshiApiKey?: string;
     defaultChain?: string;
     defaultWallet?: string;
+    agentProvider?: string;
+    agentModel?: string;
+    agentApiKey?: string;
+    agentBaseUrl?: string;
 }
 declare function loadConfig(): Config;
 declare function saveConfig(updates: Partial<Config>): void;
@@ -285,4 +324,4 @@ declare const CONFIG_DIR: string;
 declare const CONFIG_FILE: string;
 declare const WALLETS_DIR: string;
 
-export { AGENT_TOOLS, type Address, type AgentConfig, type AgentMessage, type AgentTool, type BridgeParams, type BridgeQuote, type BridgeResult, CHAIN_IDS, CHAIN_NAMES, CONFIG_DIR, CONFIG_FILE, type Chain, type ChainId, DEFAULT_CHAIN, type EarnChain, type EarnParams, type EarnProtocol, type EarnQuote, type ExecuteResult, type GlobalOptions, LIFI_API_BASE, type Market, type MarketOrder, NATIVE_TOKEN, type PolymarketPosition, type PortfolioResponse, type SwapParams, type SwapQuote, type SwapResult, type Token, type TokenSymbol, type TransactionRequest, type TxHash, type Vault, WALLETS_DIR, type Wallet, type WalletStore, createWallet, ensureAllowance, executeTransaction, fetchEarnChains, fetchEarnProtocols, fetchPortfolio, fetchVault, fetchVaults, getBridgeQuote, getConfigValue, getEarnQuote, getMarketBySlug, getMarkets, getSwapQuote, getWalletKey, importWallet, listWallets, loadConfig, resolveChain, runAgent, saveConfig };
+export { AGENT_TOOLS, type Address, type AgentConfig, type AgentMessage, type AgentTool, type BridgeParams, type BridgeQuote, type BridgeResult, CHAIN_IDS, CHAIN_NAMES, CONFIG_DIR, CONFIG_FILE, type Chain, type ChainId, DEFAULT_CHAIN, type EarnParams, type EarnProtocol, type EarnQuote, type ExecuteResult, type GlobalOptions, LIFI_API_BASE, type Market, type MarketOrder, NATIVE_TOKEN, type PolymarketPosition, type PortfolioResponse, type SwapParams, type SwapQuote, type SwapResult, type Token, type TokenSymbol, type TransactionRequest, type TxHash, type Vault, type VaultListParams, WALLETS_DIR, type Wallet, type WalletStore, createWallet, ensureAllowance, executeTransaction, fetchEarnProtocols, fetchPortfolio, fetchVault, fetchVaults, getBridgeQuote, getConfigValue, getEarnQuote, getMarketBySlug, getMarkets, getSwapQuote, getWalletKey, importWallet, listWallets, loadConfig, resolveChain, runAgent, saveConfig };

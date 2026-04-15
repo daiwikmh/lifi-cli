@@ -52,7 +52,11 @@ function getConfigValue(key) {
     polymarketApiKey: "POLYMARKET_API_KEY",
     kalshiApiKey: "KALSHI_API_KEY",
     defaultChain: "DEFAULT_CHAIN",
-    defaultWallet: "DEFAULT_WALLET"
+    defaultWallet: "DEFAULT_WALLET",
+    agentProvider: "AGENT_PROVIDER",
+    agentModel: "AGENT_MODEL",
+    agentApiKey: "AGENT_API_KEY",
+    agentBaseUrl: "AGENT_BASE_URL"
   };
   const fromEnv = process.env[envMap[key]];
   if (fromEnv) return fromEnv;
@@ -111,9 +115,11 @@ async function getBridgeQuote(params) {
     fromAmount: response.estimate.fromAmount,
     toAmount: response.estimate.toAmount,
     toAmountMin: response.estimate.toAmountMin,
+    fromDecimals: response.action.fromToken?.decimals ?? 18,
+    toDecimals: response.action.toToken?.decimals ?? 18,
     estimatedDuration: response.estimate.executionDuration,
-    gasCostUSD: response.estimate.gasCosts?.[0]?.amount ?? "0",
-    tool: response.steps?.[0]?.tool ?? "unknown",
+    gasCostUSD: response.estimate.gasCosts?.[0]?.amountUSD ?? "0",
+    tool: response.toolDetails?.name ?? response.tool ?? "unknown",
     transactionRequest: response.transactionRequest,
     approvalAddress: response.estimate.approvalAddress
   };
@@ -167,9 +173,11 @@ async function getSwapQuote(params) {
     fromAmount: response.estimate.fromAmount,
     toAmount: response.estimate.toAmount,
     toAmountMin: response.estimate.toAmountMin,
+    fromDecimals: response.action.fromToken?.decimals ?? 18,
+    toDecimals: response.action.toToken?.decimals ?? 18,
     estimatedDuration: response.estimate.executionDuration,
-    gasCostUSD: response.estimate.gasCosts?.[0]?.amount ?? "0",
-    tool: response.steps?.[0]?.tool ?? "unknown",
+    gasCostUSD: response.estimate.gasCosts?.[0]?.amountUSD ?? "0",
+    tool: response.toolDetails?.name ?? response.tool ?? "unknown",
     transactionRequest: response.transactionRequest,
     approvalAddress: response.estimate.approvalAddress
   };
@@ -221,7 +229,7 @@ async function getVault(chainId, address) {
 }
 async function listEarnProtocols() {
   const { data } = await client2.get("/protocols");
-  return data.protocols ?? data;
+  return Array.isArray(data) ? data : data.protocols ?? [];
 }
 
 // src/core/earn/earn.ts
@@ -231,49 +239,61 @@ function resolveChainId3(chain) {
   if (!id) throw new Error(`Unknown chain: ${chain}`);
   return id;
 }
-async function getEarnQuote(params) {
-  const chainId = resolveChainId3(params.chain);
-  let vault;
-  if (params.protocol.startsWith("0x")) {
-    vault = await getVault(chainId, params.protocol);
-  } else {
-    const { vaults } = await listVaults({
-      chainId,
-      protocol: params.protocol,
-      underlyingToken: params.token,
-      limit: 1
-    });
-    vault = vaults[0];
+async function resolveVault(protocol, chainId, token) {
+  if (protocol.startsWith("0x")) {
+    return getVault(chainId, protocol);
   }
-  if (!vault) {
+  const params = { chainId, protocol, limit: 5 };
+  if (token) params.underlyingToken = token;
+  const { data: vaults } = await listVaults(params);
+  if (!vaults.length) {
     throw new Error(
-      `No vault found for protocol "${params.protocol}" on chain ${chainId}. Run 'lifi earn vaults' to see available vaults.`
+      `No vault found for protocol "${protocol}" on chain ${chainId}. Run 'lifi earn vaults' to see available vaults.`
     );
   }
+  if (token) {
+    const match = vaults.find(
+      (v) => v.underlyingTokens.some((t) => t.symbol.toLowerCase() === token.toLowerCase())
+    );
+    if (match) return match;
+  }
+  return vaults[0];
+}
+async function getEarnQuote(params) {
+  const chainId = resolveChainId3(params.chain);
+  const vault = await resolveVault(params.protocol, chainId, params.token);
   const response = await getQuote({
     fromChain: chainId,
     toChain: vault.chainId,
     fromToken: params.token,
-    toToken: vault.vaultToken.address,
+    toToken: vault.address,
+    // vault address IS the toToken
     fromAmount: params.amount,
     fromAddress: params.fromAddress,
     toAddress: params.fromAddress
   });
+  const apy = vault.analytics?.apy?.total ?? null;
+  const underlying = vault.underlyingTokens[0];
   return {
     protocol: vault.name,
-    fromToken: params.token,
-    toToken: vault.vaultToken.symbol,
+    vaultSlug: vault.slug,
+    vaultAddress: vault.address,
+    fromToken: underlying?.symbol ?? params.token,
+    toToken: vault.name,
     fromAmount: response.estimate.fromAmount,
     toAmount: response.estimate.toAmount,
-    estimatedApy: vault.apy,
+    estimatedApy: apy,
     estimatedDuration: response.estimate.executionDuration,
-    gasCostUSD: response.estimate.gasCosts?.[0]?.amount ?? "0",
+    gasCostUSD: response.estimate.gasCosts?.[0]?.amountUSD ?? "0",
     transactionRequest: response.transactionRequest,
     approvalAddress: response.estimate.approvalAddress
   };
 }
 async function fetchVaults(params) {
   return listVaults(params);
+}
+async function fetchVault(chainId, address) {
+  return getVault(chainId, address);
 }
 async function fetchEarnProtocols() {
   return listEarnProtocols();
@@ -388,7 +408,7 @@ async function getMarkets(query, limit = 20) {
       });
     }
   }
-  return markets;
+  return markets.slice(0, limit);
 }
 async function getMarketBySlug(slug) {
   try {
@@ -463,6 +483,128 @@ var statusTool = {
   }
 };
 
+// src/mcp/tools/dryrun.tool.ts
+function resolveChainId4(chain) {
+  if (typeof chain === "number") return chain;
+  const id = CHAIN_IDS[String(chain).toLowerCase()];
+  if (!id) throw new Error(`Unknown chain: ${chain}`);
+  return id;
+}
+var dryrunBridgeTool = {
+  name: "lifi_dryrun_bridge",
+  description: "Simulate a cross-chain bridge without submitting. Returns full route details, gas estimate, approval requirements.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      fromChain: { type: "string", description: "Source chain name or ID" },
+      toChain: { type: "string", description: "Destination chain name or ID" },
+      fromToken: { type: "string", description: "Token to send (symbol or address)" },
+      toToken: { type: "string", description: "Token to receive (symbol or address)" },
+      amount: { type: "string", description: "Amount in token units (e.g. 100 for 100 USDC)" },
+      fromAddress: { type: "string", description: "Sender address (0x...)" },
+      slippage: { type: "number", description: "Slippage tolerance (default 0.005)" }
+    },
+    required: ["fromChain", "toChain", "fromToken", "toToken", "amount", "fromAddress"]
+  },
+  async handler(args) {
+    const quote = await getBridgeQuote({
+      fromChain: args.fromChain,
+      toChain: args.toChain,
+      fromToken: args.fromToken,
+      toToken: args.toToken,
+      amount: args.amount,
+      fromAddress: args.fromAddress,
+      slippage: args.slippage ?? 5e-3
+    });
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify({ dryRun: true, type: "bridge", quote }, null, 2)
+      }]
+    };
+  }
+};
+var dryrunSwapTool = {
+  name: "lifi_dryrun_swap",
+  description: "Simulate a single-chain token swap without submitting. Returns route, price impact, gas estimate.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      chain: { type: "string", description: "Chain name or ID" },
+      fromToken: { type: "string", description: "Token to swap from" },
+      toToken: { type: "string", description: "Token to swap to" },
+      amount: { type: "string", description: "Amount in token units" },
+      fromAddress: { type: "string", description: "Sender address (0x...)" },
+      slippage: { type: "number", description: "Slippage tolerance (default 0.005)" }
+    },
+    required: ["chain", "fromToken", "toToken", "amount", "fromAddress"]
+  },
+  async handler(args) {
+    const quote = await getSwapQuote({
+      chain: args.chain,
+      fromToken: args.fromToken,
+      toToken: args.toToken,
+      amount: args.amount,
+      fromAddress: args.fromAddress,
+      slippage: args.slippage ?? 5e-3
+    });
+    const priceImpact = quote.toAmountMin && quote.toAmount ? ((1 - parseFloat(quote.toAmountMin) / parseFloat(quote.toAmount)) * 100).toFixed(3) : null;
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify({ dryRun: true, type: "swap", quote, priceImpact }, null, 2)
+      }]
+    };
+  }
+};
+var dryrunEarnTool = {
+  name: "lifi_dryrun_earn",
+  description: "Simulate a yield vault deposit without submitting. Returns vault APY, TVL, projected yield, gas estimate.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      protocol: { type: "string", description: "Protocol slug or vault address (0x...)" },
+      token: { type: "string", description: "Token to deposit (symbol or address)" },
+      amount: { type: "string", description: "Amount in smallest unit" },
+      chain: { type: "string", description: "Chain name or ID" },
+      fromAddress: { type: "string", description: "Sender address (0x...)" }
+    },
+    required: ["protocol", "token", "amount", "chain", "fromAddress"]
+  },
+  async handler(args) {
+    const chainId = resolveChainId4(args.chain);
+    const quote = await getEarnQuote({
+      protocol: args.protocol,
+      token: args.token,
+      amount: args.amount,
+      chain: args.chain,
+      fromAddress: args.fromAddress
+    });
+    let vault = null;
+    try {
+      if (args.protocol.startsWith("0x")) {
+        vault = await fetchVault(chainId, args.protocol);
+      } else {
+        const { vaults } = await fetchVaults({ chainId, protocol: args.protocol, limit: 1 });
+        vault = vaults[0] ?? null;
+      }
+    } catch {
+    }
+    const apy = vault?.analytics?.apy?.total ?? null;
+    const projectedYield = apy != null ? {
+      daily: parseFloat(args.amount) / 1e6 * apy / 365,
+      monthly: parseFloat(args.amount) / 1e6 * apy / 12,
+      annual: parseFloat(args.amount) / 1e6 * apy
+    } : null;
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify({ dryRun: true, type: "earn", quote, vault, projectedYield }, null, 2)
+      }]
+    };
+  }
+};
+
 // src/mcp/server.ts
 var ALL_TOOLS = [
   bridgeTool,
@@ -472,7 +614,10 @@ var ALL_TOOLS = [
   earnProtocolsTool,
   listMarketsTool,
   getMarketTool,
-  statusTool
+  statusTool,
+  dryrunBridgeTool,
+  dryrunSwapTool,
+  dryrunEarnTool
 ];
 async function startMcpServer() {
   const server = new Server(

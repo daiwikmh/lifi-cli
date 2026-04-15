@@ -1,3 +1,5 @@
+import Link from "next/link"
+
 export default function EarnPage() {
   return (
     <article className="flex flex-col gap-8">
@@ -7,9 +9,15 @@ export default function EarnPage() {
           <h1 className="text-3xl font-bold tracking-tight text-text-primary">Earn</h1>
         </div>
         <p className="text-text-secondary leading-relaxed">
-          Deposit tokens into yield protocols via the LI.FI Composer. Supports
-          Morpho, Aave, Lido, and Compound. Get a quote before committing.
+          Deposit tokens into yield protocols via the LI.FI Composer. Browse vaults,
+          get quotes, and track positions — all from the terminal.
         </p>
+        <Link
+          href="/playground/earn"
+          className="w-fit text-xs font-mono px-3 py-1.5 rounded-full border border-neon-cyan text-neon-cyan hover:bg-neon-cyan/10 transition-colors"
+        >
+          Try it in the playground →
+        </Link>
       </header>
 
       <section className="flex flex-col gap-4">
@@ -32,12 +40,12 @@ export default function EarnPage() {
           </thead>
           <tbody>
             {[
-              ["--protocol <protocol>", "Protocol symbol (e.g. morpho-usdc, aave-usdc, lido-wsteth)", true],
-              ["--token <token>", "Token to deposit (symbol or address)", true],
-              ["--amount <amount>", "Amount in smallest unit (e.g. 1000000 for 1 USDC)", true],
+              ["--protocol <protocol>", "Protocol slug (e.g. morpho, aave-v3) or vault address (0x...)", true],
+              ["--token <token>", "Token to deposit (symbol, e.g. USDC, WETH)", true],
+              ["--amount <amount>", "Amount in human units (e.g. 100 for 100 USDC)", true],
               ["--wallet <name>", "Wallet name from lifi wallet list", true],
-              ["--chain <chain>", "Chain name or ID (default: from lifi config)", false],
-              ["--execute", "Sign and submit the deposit", false],
+              ["--chain <chain>", "Chain name or ID (default: base)", false],
+              ["--execute", "Sign and submit the deposit transaction", false],
               ["--json", "Output as JSON", false],
             ].map(([flag, desc, req]) => (
               <tr key={flag as string}>
@@ -54,29 +62,33 @@ export default function EarnPage() {
             ))}
           </tbody>
         </table>
-        <p className="text-sm text-text-secondary">Example:</p>
         <div className="code-block">
-          <code>{`# Preview deposit quote
+          <code>{`# Preview a deposit quote (100 USDC into Morpho on Base)
 lifi earn quote \\
-  --protocol morpho-usdc --token USDC \\
-  --amount 100000000 --wallet main
+  --protocol morpho --token USDC \\
+  --amount 100 --wallet main
 
-# Execute deposit (amount in smallest unit: 100 USDC = 100000000)
+# Execute the deposit
 lifi earn quote \\
-  --protocol morpho-usdc --token USDC \\
-  --amount 100000000 --wallet main --execute`}</code>
+  --protocol morpho --token USDC \\
+  --amount 100 --wallet main --execute
+
+# Use a vault address directly
+lifi earn quote \\
+  --protocol 0xd63070114470f685b75B74D60EEc7c1113d33a3d \\
+  --token USDC --amount 100 --wallet main`}</code>
         </div>
       </section>
 
       <section className="flex flex-col gap-4">
-        <h2 id="protocols" className="text-xl font-semibold text-neon-cyan glow-cyan">
-          lifi earn protocols
+        <h2 id="vaults" className="text-xl font-semibold text-neon-cyan glow-cyan">
+          lifi earn vaults
         </h2>
         <p className="text-sm text-text-secondary">
-          List all yield protocols supported by LI.FI Composer.
+          Browse available yield vaults from the LI.FI Earn API.
         </p>
         <div className="code-block">
-          <code>lifi earn protocols [options]</code>
+          <code>lifi earn vaults [options]</code>
         </div>
         <table className="param-table">
           <thead>
@@ -87,7 +99,11 @@ lifi earn quote \\
           </thead>
           <tbody>
             {[
-              ["--category <category>", "Filter by type: vault, lending, staking, yield"],
+              ["--chain <chain>", "Filter by chain name or ID"],
+              ["--protocol <protocol>", "Filter by protocol slug (e.g. morpho, aave-v3)"],
+              ["--token <token>", "Filter by underlying token symbol"],
+              ["--limit <n>", "Max results (default: 20)"],
+              ["--cursor <cursor>", "Pagination cursor from previous response"],
               ["--json", "Output as JSON"],
             ].map(([flag, desc]) => (
               <tr key={flag as string}>
@@ -98,45 +114,48 @@ lifi earn quote \\
           </tbody>
         </table>
         <div className="code-block">
-          <code>{`# List all protocols
-lifi earn protocols
+          <code>{`# List all vaults
+lifi earn vaults
 
-# Filter by category
-lifi earn protocols --category lending`}</code>
+# Filter by chain and token
+lifi earn vaults --chain base --token USDC
+
+# Filter by protocol
+lifi earn vaults --protocol morpho --limit 5`}</code>
         </div>
       </section>
 
       <section className="flex flex-col gap-4">
-        <h2 className="text-xl font-semibold text-neon-cyan glow-cyan">
-          Supported protocols
+        <h2 id="protocols" className="text-xl font-semibold text-neon-cyan glow-cyan">
+          lifi earn protocols
         </h2>
-        <table className="param-table">
-          <thead>
-            <tr>
-              <th>Symbol</th>
-              <th>Name</th>
-              <th>Category</th>
-            </tr>
-          </thead>
-          <tbody>
-            {[
-              ["morpho-usdc", "Morpho USDC Vault", "vault"],
-              ["aave-usdc", "Aave USDC Market", "lending"],
-              ["lido-wsteth", "Lido wstETH", "staking"],
-              ["compound-usdc", "Compound USDC", "lending"],
-            ].map(([sym, name, cat]) => (
-              <tr key={sym as string}>
-                <td>{sym}</td>
-                <td className="!text-text-secondary">{name}</td>
-                <td className="!text-text-muted">{cat}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <p className="text-sm text-text-muted">
-          Run <code className="text-xs bg-bg-secondary px-1.5 py-0.5 rounded">lifi earn protocols --json</code> for the full list.
+        <p className="text-sm text-text-secondary">
+          List all yield protocols supported by LI.FI Earn.
         </p>
+        <div className="code-block">
+          <code>lifi earn protocols [--json]</code>
+        </div>
+        <div className="code-block">
+          <code>{`lifi earn protocols
+lifi earn protocols --json`}</code>
+        </div>
+      </section>
+
+      <section className="flex flex-col gap-4">
+        <h2 id="portfolio" className="text-xl font-semibold text-neon-cyan glow-cyan">
+          lifi earn portfolio
+        </h2>
+        <p className="text-sm text-text-secondary">
+          Show all active yield positions for a wallet address.
+        </p>
+        <div className="code-block">
+          <code>lifi earn portfolio {"<address>"} [--json]</code>
+        </div>
+        <div className="code-block">
+          <code>{`lifi earn portfolio 0xYourAddress
+lifi earn portfolio 0xYourAddress --json`}</code>
+        </div>
       </section>
     </article>
-  );
+  )
 }
