@@ -15,14 +15,15 @@ import {
   mcpCommand,
   dryrunCommand,
   resetCommand,
+  telegramCommand,
 } from './commands/index.js'
 
-const VERSION = '0.1.6'
+const VERSION = '0.1.15'
 
 const program = new Command()
 
 program
-  .name('lifi')
+  .name('lifi-cli')
   .description('LI.FI CLI — bridge, swap, earn, and bet from the terminal.')
   .version(VERSION)
   .action(() => {
@@ -44,5 +45,6 @@ program.addCommand(configCommand())
 program.addCommand(mcpCommand())
 program.addCommand(dryrunCommand())
 program.addCommand(resetCommand())
+program.addCommand(telegramCommand())
 
 program.parse()

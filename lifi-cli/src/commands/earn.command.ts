@@ -22,7 +22,7 @@ export function earnCommand(): Command {
     .requiredOption('--protocol <protocol>', 'protocol slug (e.g. morpho) or vault address (0x...)')
     .requiredOption('--token <token>', 'token to deposit (symbol or address)')
     .requiredOption('--amount <amount>', 'amount in human units (e.g. 10 for 10 USDC)')
-    .requiredOption('--wallet <name>', 'wallet name (from lifi wallet list)')
+    .requiredOption('--wallet <name>', 'wallet name (from lifi-cli wallet list)')
     .option('--chain <chain>', 'chain name or ID', resolveChain())
     .option('--execute', 'sign and submit the deposit transaction')
     .option('--json', 'output as JSON')
@@ -100,7 +100,7 @@ export function earnCommand(): Command {
 
         console.log(chalk.green('\nDeposit submitted!'))
         console.log(`Hash: ${chalk.cyan(result.txHash)}`)
-        console.log(chalk.dim(`Run: lifi status ${result.txHash} to track`))
+        console.log(chalk.dim(`Run: lifi-cli status ${result.txHash} to track`))
       } catch (err) {
         console.error(chalk.red('Error:'), String(err))
         process.exit(1)

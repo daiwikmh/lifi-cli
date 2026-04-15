@@ -18,10 +18,10 @@ import {
   loadConfig,
   resolveChain,
   saveConfig
-} from "./chunk-KUNM2NGH.mjs";
+} from "./chunk-4R42F6ON.mjs";
 
 // src/cli.ts
-import { Command as Command15 } from "commander";
+import { Command as Command16 } from "commander";
 
 // src/display/banner.ts
 import chalk from "chalk";
@@ -39,14 +39,14 @@ function printClibanner(version) {
     "  " + chalk.bold("bridge") + chalk.dim(" \xB7") + "  " + chalk.bold("swap") + chalk.dim(" \xB7") + "  " + chalk.bold("earn") + chalk.dim(" \xB7") + "  " + chalk.bold("markets") + chalk.dim(" \xB7") + "  " + chalk.bold("agent") + chalk.dim(" \xB7") + "  " + chalk.bold("mcp")
   );
   console.log();
-  console.log(chalk.dim(`  v${version}  \xB7  Run lifi --help to see all commands`));
+  console.log(chalk.dim(`  v${version}  \xB7  Run lifi-cli --help to see all commands`));
   console.log();
 }
 function printAgentBanner(model) {
   const lines = [
     "\u250C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510",
     "\u2502                                                         \u2502",
-    "\u2502   lifi agent                                            \u2502",
+    "\u2502   lifi-cli agent                                        \u2502",
     "\u2502   Your AI copilot for DeFi \xB7 powered by OpenRouter      \u2502",
     "\u2502                                                         \u2502",
     "\u2502   Tools:                                                \u2502",
@@ -162,6 +162,62 @@ async function getWalletKey(name) {
 // src/core/wallet/executor.ts
 import { createWalletClient, createPublicClient, http, erc20Abi } from "viem";
 import { privateKeyToAccount as privateKeyToAccount2 } from "viem/accounts";
+
+// src/api/telegram/client.ts
+var BASE = "https://api.telegram.org/bot";
+async function call(token, method, body) {
+  const res = await fetch(`${BASE}${token}/${method}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.description ?? `Telegram API error on ${method}`);
+  return data.result;
+}
+async function sendMessage(token, chatId, text) {
+  await call(token, "sendMessage", { chat_id: chatId, text, parse_mode: "HTML" });
+}
+async function getMe(token) {
+  return call(token, "getMe", {});
+}
+async function getUpdates(token) {
+  return call(token, "getUpdates", { limit: 5, timeout: 2 });
+}
+
+// src/api/telegram/notify.ts
+async function notify(text) {
+  const token = getConfigValue("telegramBotToken");
+  const chatId = getConfigValue("telegramChatId");
+  if (!token || !chatId) return;
+  try {
+    await sendMessage(token, chatId, text);
+  } catch {
+  }
+}
+function txNotification(opts) {
+  const labels = { bridge: "Bridge", swap: "Swap", earn: "Earn deposit" };
+  const chains = {
+    1: "Ethereum",
+    8453: "Base",
+    42161: "Arbitrum",
+    10: "Optimism",
+    137: "Polygon",
+    56: "BSC",
+    43114: "Avalanche"
+  };
+  const chain = chains[opts.chainId] ?? `Chain ${opts.chainId}`;
+  const lines = [
+    `<b>lifi-cli</b> \u2014 ${labels[opts.type]} submitted`,
+    opts.detail ? opts.detail : "",
+    `Chain: ${chain}`,
+    `Tx: <code>${opts.txHash}</code>`,
+    `<i>Run: lifi-cli status ${opts.txHash}</i>`
+  ].filter(Boolean);
+  return lines.join("\n");
+}
+
+// src/core/wallet/executor.ts
 var PUBLIC_RPC = {
   1: "https://eth.llamarpc.com",
   10: "https://mainnet.optimism.io",
@@ -179,7 +235,7 @@ function getViemChain(chainId) {
     rpcUrls: { default: { http: [PUBLIC_RPC[chainId] ?? `https://rpc.ankr.com/eth`] } }
   };
 }
-async function executeTransaction(tx, walletName) {
+async function executeTransaction(tx, walletName, notifyOpts) {
   const privateKey = await getWalletKey(walletName);
   const account = privateKeyToAccount2(privateKey);
   const chain = getViemChain(tx.chainId);
@@ -190,6 +246,9 @@ async function executeTransaction(tx, walletName) {
     value: tx.value,
     gas: tx.gasLimit
   });
+  if (notifyOpts) {
+    await notify(txNotification({ ...notifyOpts, txHash: hash, chainId: tx.chainId }));
+  }
   return { txHash: hash, chainId: tx.chainId };
 }
 async function ensureAllowance(tokenAddress, spender, amount, walletName, chainId) {
@@ -267,7 +326,7 @@ function makeTable(head, rows) {
 
 // src/commands/bridge.command.ts
 function bridgeCommand() {
-  return new Command("bridge").description("Get a quote to bridge tokens across chains").requiredOption("--from <token>", "token to send (symbol or address)").requiredOption("--to <token>", "token to receive (symbol or address)").requiredOption("--from-chain <chain>", "source chain (name or ID)").requiredOption("--to-chain <chain>", "destination chain (name or ID)").requiredOption("--amount <amount>", "amount in token units (e.g. 100 for 100 USDC)").requiredOption("--wallet <name>", "wallet name (from lifi wallet list)").option("--slippage <slippage>", "slippage tolerance (e.g. 0.005 for 0.5%)", "0.005").option("--execute", "sign and submit the transaction").option("--json", "output as JSON").action(async (opts) => {
+  return new Command("bridge").description("Get a quote to bridge tokens across chains").requiredOption("--from <token>", "token to send (symbol or address)").requiredOption("--to <token>", "token to receive (symbol or address)").requiredOption("--from-chain <chain>", "source chain (name or ID)").requiredOption("--to-chain <chain>", "destination chain (name or ID)").requiredOption("--amount <amount>", "amount in token units (e.g. 100 for 100 USDC)").requiredOption("--wallet <name>", "wallet name (from lifi-cli wallet list)").option("--slippage <slippage>", "slippage tolerance (e.g. 0.005 for 0.5%)", "0.005").option("--execute", "sign and submit the transaction").option("--json", "output as JSON").action(async (opts) => {
     try {
       const quote = await withSpinner(
         "Fetching bridge quote...",
@@ -340,7 +399,7 @@ Approval needed: ${quote.approvalAddress}`));
       console.log(chalk2.green(`
 Transaction submitted!`));
       console.log(`Hash: ${chalk2.cyan(result.txHash)}`);
-      console.log(chalk2.dim(`Run: lifi status ${result.txHash} to track progress`));
+      console.log(chalk2.dim(`Run: lifi-cli status ${result.txHash} to track progress`));
     } catch (err) {
       console.error(chalk2.red("Error:"), String(err));
       process.exit(1);
@@ -352,7 +411,7 @@ Transaction submitted!`));
 import { Command as Command2 } from "commander";
 import chalk3 from "chalk";
 function swapCommand() {
-  return new Command2("swap").description("Get a quote to swap tokens on a single chain").requiredOption("--from <token>", "token to swap from").requiredOption("--to <token>", "token to swap to").requiredOption("--amount <amount>", "amount in token units").requiredOption("--wallet <name>", "wallet name (from lifi wallet list)").option("--chain <chain>", "chain name or ID", resolveChain()).option("--slippage <slippage>", "slippage tolerance", "0.005").option("--execute", "sign and submit the transaction").option("--json", "output as JSON").action(async (opts) => {
+  return new Command2("swap").description("Get a quote to swap tokens on a single chain").requiredOption("--from <token>", "token to swap from").requiredOption("--to <token>", "token to swap to").requiredOption("--amount <amount>", "amount in token units").requiredOption("--wallet <name>", "wallet name (from lifi-cli wallet list)").option("--chain <chain>", "chain name or ID", resolveChain()).option("--slippage <slippage>", "slippage tolerance", "0.005").option("--execute", "sign and submit the transaction").option("--json", "output as JSON").action(async (opts) => {
     try {
       const quote = await withSpinner(
         "Fetching swap quote...",
@@ -490,7 +549,7 @@ function resolveChainId2(chain) {
 }
 function earnCommand() {
   const earn = new Command3("earn").description("Discover vaults, earn yield, and track positions via LI.FI Earn");
-  earn.command("quote").description("Get a quote to deposit into a yield vault").requiredOption("--protocol <protocol>", "protocol slug (e.g. morpho) or vault address (0x...)").requiredOption("--token <token>", "token to deposit (symbol or address)").requiredOption("--amount <amount>", "amount in human units (e.g. 10 for 10 USDC)").requiredOption("--wallet <name>", "wallet name (from lifi wallet list)").option("--chain <chain>", "chain name or ID", resolveChain()).option("--execute", "sign and submit the deposit transaction").option("--json", "output as JSON").action(async (opts) => {
+  earn.command("quote").description("Get a quote to deposit into a yield vault").requiredOption("--protocol <protocol>", "protocol slug (e.g. morpho) or vault address (0x...)").requiredOption("--token <token>", "token to deposit (symbol or address)").requiredOption("--amount <amount>", "amount in human units (e.g. 10 for 10 USDC)").requiredOption("--wallet <name>", "wallet name (from lifi-cli wallet list)").option("--chain <chain>", "chain name or ID", resolveChain()).option("--execute", "sign and submit the deposit transaction").option("--json", "output as JSON").action(async (opts) => {
     try {
       const rawAmount = await toSmallestUnit(opts.amount, opts.token, opts.chain);
       const quote = await withSpinner(
@@ -560,7 +619,7 @@ Approval needed: ${quote.approvalAddress}`));
       }
       console.log(chalk4.green("\nDeposit submitted!"));
       console.log(`Hash: ${chalk4.cyan(result.txHash)}`);
-      console.log(chalk4.dim(`Run: lifi status ${result.txHash} to track`));
+      console.log(chalk4.dim(`Run: lifi-cli status ${result.txHash} to track`));
     } catch (err) {
       console.error(chalk4.red("Error:"), String(err));
       process.exit(1);
@@ -830,7 +889,7 @@ import chalk7 from "chalk";
 import axios from "axios";
 function createKalshiClient() {
   const apiKey = getConfigValue("kalshiApiKey");
-  if (!apiKey) throw new Error("Kalshi API key required. Run: lifi config set --kalshi-key <key>  (get one at kalshi.com/api)");
+  if (!apiKey) throw new Error("Kalshi API key required. Run: lifi-cli config set --kalshi-key <key>  (get one at kalshi.com/api)");
   return axios.create({
     baseURL: "https://trading-api.kalshi.com/trade-api/v2",
     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` }
@@ -1137,7 +1196,7 @@ function walletCommand() {
       return;
     }
     if (wallets.length === 0) {
-      console.log(chalk10.yellow("No wallets found. Run: lifi wallet create --name <name>"));
+      console.log(chalk10.yellow("No wallets found. Run: lifi-cli wallet create --name <name>"));
       return;
     }
     console.log(makeTable(
@@ -1161,7 +1220,7 @@ import chalk11 from "chalk";
 import OpenAI from "openai";
 function createOpenRouterClient() {
   const apiKey = getConfigValue("openrouterApiKey");
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY not set. Run: lifi config set --openrouter-key <key>");
+  if (!apiKey) throw new Error("OPENROUTER_API_KEY not set. Run: lifi-cli config set --openrouter-key <key>");
   return new OpenAI({
     apiKey,
     baseURL: "https://openrouter.ai/api/v1",
@@ -1315,7 +1374,7 @@ var AGENT_TOOLS = [
       parameters: {
         type: "object",
         properties: {
-          chainId: { type: "number", description: "Filter by chain ID (optional)" },
+          chainId: { type: "number", description: "Filter by chain ID as a number (e.g. 8453 for Base, 1 for Ethereum, 42161 for Arbitrum, 10 for Optimism)" },
           protocol: { type: "string", description: "Filter by protocol slug (optional)" },
           underlyingToken: { type: "string", description: "Filter by underlying token symbol (optional)" },
           category: { type: "string", enum: ["vault", "lending", "staking", "yield"], description: "Filter by category (optional)" },
@@ -1463,20 +1522,133 @@ var AGENT_TOOLS = [
         }
       }
     }
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_wallet_address",
+      description: "Get the public address of a saved wallet by name",
+      parameters: {
+        type: "object",
+        properties: {
+          walletName: { type: "string", description: "Wallet name (from lifi-cli wallet list)" }
+        },
+        required: ["walletName"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "execute_bridge",
+      description: "Execute a cross-chain bridge transaction using a saved wallet. Always show the quote details and ask user to confirm before calling this.",
+      parameters: {
+        type: "object",
+        properties: {
+          fromChain: { type: "string", description: "Source chain name or ID" },
+          toChain: { type: "string", description: "Destination chain name or ID" },
+          fromToken: { type: "string", description: "Token to send" },
+          toToken: { type: "string", description: "Token to receive" },
+          amount: { type: "string", description: "Amount in smallest unit" },
+          walletName: { type: "string", description: "Saved wallet name to sign with" },
+          slippage: { type: "number", description: "Slippage tolerance (default 0.005)" }
+        },
+        required: ["fromChain", "toChain", "fromToken", "toToken", "amount", "walletName"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "execute_swap",
+      description: "Execute a token swap on a single chain using a saved wallet. Always show the quote details and ask user to confirm before calling this.",
+      parameters: {
+        type: "object",
+        properties: {
+          chain: { type: "string", description: "Chain name or ID" },
+          fromToken: { type: "string", description: "Token to swap from" },
+          toToken: { type: "string", description: "Token to swap to" },
+          amount: { type: "string", description: "Amount in smallest unit" },
+          walletName: { type: "string", description: "Saved wallet name to sign with" },
+          slippage: { type: "number", description: "Slippage tolerance (default 0.005)" }
+        },
+        required: ["chain", "fromToken", "toToken", "amount", "walletName"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "execute_earn",
+      description: "Execute a yield vault deposit using a saved wallet. Always show the quote details and ask user to confirm before calling this.",
+      parameters: {
+        type: "object",
+        properties: {
+          protocol: { type: "string", description: "Protocol slug or vault address (0x...)" },
+          token: { type: "string", description: "Token to deposit" },
+          amount: { type: "string", description: "Amount in smallest unit" },
+          chain: { type: "string", description: "Chain name or ID" },
+          walletName: { type: "string", description: "Saved wallet name to sign with" }
+        },
+        required: ["protocol", "token", "amount", "chain", "walletName"]
+      }
+    }
   }
 ];
 
 // src/core/agent/agent.ts
-var DEFAULT_SYSTEM = `You are a DeFi assistant with access to LI.FI tools for bridging, swapping, earning yield, and checking prediction markets on Polymarket, Kalshi, and Manifold. Help users move and grow their crypto. Always confirm transaction details before executing. Present amounts in human-readable form.
+var DEFAULT_SYSTEM = `You are lifi-cli agent \u2014 a terminal DeFi assistant. You ONLY discuss DeFi, crypto, and the tools listed below. Do not respond to unrelated topics.
 
-IMPORTANT FORMATTING RULES \u2014 follow these exactly:
-- Plain text only. No markdown of any kind.
-- No asterisks (* or **), no underscores for emphasis, no pound signs (#) for headers.
-- No emoji characters.
-- For tables, use pipe-separated markdown table format (| col | col |) so the terminal can render them \u2014 no other table format.
-- No bullet points with asterisks. Use a dash (-) for lists if needed.
-- Keep responses concise and scannable.`;
-async function dispatchTool(name, args) {
+YOUR TOOLS (call these functions to answer user requests):
+- get_wallet_address: resolve a wallet name to its public address (walletName)
+- get_bridge_quote: get a cross-chain bridge quote (fromChain, toChain, fromToken, toToken, amount, fromAddress)
+- get_swap_quote: get a same-chain token swap quote (chain, fromToken, toToken, amount, fromAddress)
+- get_earn_quote: get a yield deposit quote via LI.FI Composer (protocol, token, amount, chain, fromAddress)
+- list_earn_vaults: browse yield vaults (chainId as number e.g. 8453, protocol slug, underlyingToken symbol, limit \u2014 omit filters you don't need)
+- list_earn_protocols: list all supported yield protocols (no args)
+- get_earn_portfolio: show active yield positions for a wallet (userAddress)
+- list_markets: list Polymarket prediction markets (query, limit)
+- list_kalshi_markets: list Kalshi prediction markets (query, limit)
+- list_manifold_markets: list Manifold prediction markets (query, limit)
+- dryrun_bridge: simulate a bridge without submitting
+- dryrun_swap: simulate a swap without submitting
+- dryrun_earn: simulate an earn deposit with projected APY and yield estimates
+- get_tx_status: check cross-chain transaction status (txHash, fromChain, toChain)
+- execute_bridge: sign and submit a bridge transaction (fromChain, toChain, fromToken, toToken, amount, walletName)
+- execute_swap: sign and submit a swap transaction (chain, fromToken, toToken, amount, walletName)
+- execute_earn: sign and submit a yield deposit (protocol, token, amount, chain, walletName)
+
+EXECUTION RULES \u2014 mandatory, never skip:
+1. Before calling execute_*, always call the matching quote tool first and show the user the result.
+2. After showing the quote, explicitly ask the user to confirm with "yes" before calling execute_*.
+3. Only call execute_* after the user has confirmed. The terminal will also prompt for confirmation.
+4. Never guess wallet names \u2014 call get_wallet_address first if you need the address.
+
+RULES:
+- Always call a tool before answering data questions. Never make up token prices, APYs, or market data.
+- When asked "what tools do you have", list the tools above exactly.
+- Present token amounts in human-readable form (e.g. "100 USDC" not "100000000").
+
+FORMATTING \u2014 follow exactly, no exceptions:
+- Plain text only. No markdown.
+- No asterisks, no underscores, no pound signs.
+- No emoji.
+- Tables: pipe format only (| col | col |) \u2014 the terminal renders these.
+- Lists: use dash (-) not asterisk.
+- Concise. Every line must earn its place.`;
+async function confirm(rl, summary) {
+  return new Promise((resolve) => {
+    console.log();
+    console.log(chalk11.yellow("  -- confirm transaction --"));
+    console.log(chalk11.dim(summary));
+    console.log();
+    rl.question(chalk11.bold('  Type "yes" to proceed: '), (ans) => {
+      console.log();
+      resolve(ans.trim().toLowerCase() === "yes");
+    });
+  });
+}
+async function dispatchTool(name, args, rl) {
   try {
     switch (name) {
       case "get_bridge_quote": {
@@ -1488,11 +1660,29 @@ async function dispatchTool(name, args) {
         return JSON.stringify(q, null, 2);
       }
       case "get_earn_quote": {
-        const q = await getEarnQuote(args);
+        const earnArgs = { ...args };
+        const addr = earnArgs.fromAddress;
+        if (!addr || addr === "wallet_address" || addr === "your_wallet_address") {
+          earnArgs.fromAddress = "0x0000000000000000000000000000000000000001";
+        }
+        const q = await getEarnQuote(earnArgs);
         return JSON.stringify(q, null, 2);
       }
       case "list_earn_vaults": {
-        const result = await fetchVaults(args);
+        const vaultArgs = { ...args };
+        if (typeof vaultArgs.chainId === "string") {
+          const resolved = CHAIN_IDS[vaultArgs.chainId.toLowerCase()];
+          if (resolved) vaultArgs.chainId = resolved;
+          else {
+            const n = parseInt(vaultArgs.chainId);
+            if (!isNaN(n)) vaultArgs.chainId = n;
+          }
+        }
+        for (const k of Object.keys(vaultArgs)) {
+          if (vaultArgs[k] === "" || vaultArgs[k] === null) delete vaultArgs[k];
+        }
+        delete vaultArgs.category;
+        const result = await fetchVaults(vaultArgs);
         return JSON.stringify(result, null, 2);
       }
       case "list_earn_protocols": {
@@ -1570,6 +1760,116 @@ async function dispatchTool(name, args) {
         const status = await getStatus(args.txHash, void 0, args.fromChain, args.toChain);
         return JSON.stringify(status, null, 2);
       }
+      case "get_wallet_address": {
+        const wallets = listWallets();
+        const w = wallets.find((x) => x.name === args.walletName);
+        if (!w) return JSON.stringify({ error: `Wallet not found: ${args.walletName}. Run lifi-cli wallet list to see saved wallets.` });
+        return JSON.stringify({ name: w.name, address: w.address });
+      }
+      case "execute_bridge": {
+        const walletName = args.walletName;
+        const wallets = listWallets();
+        const w = wallets.find((x) => x.name === walletName);
+        if (!w) return JSON.stringify({ error: `Wallet not found: ${walletName}` });
+        const q = await getBridgeQuote({
+          fromChain: args.fromChain,
+          toChain: args.toChain,
+          fromToken: args.fromToken,
+          toToken: args.toToken,
+          amount: args.amount,
+          fromAddress: w.address,
+          slippage: args.slippage ?? 5e-3
+        });
+        const summary = `  Bridge ${args.fromToken} -> ${args.toToken}
+  From: ${args.fromChain} -> ${args.toChain}
+  Amount: ${q.fromAmount} | Receive: ${q.toAmount}
+  Gas: $${q.gasCostUSD} | Duration: ${q.estimatedDuration}s
+  Wallet: ${walletName} (${w.address})`;
+        const ok = await confirm(rl, summary);
+        if (!ok) return JSON.stringify({ cancelled: true, reason: "User did not confirm" });
+        if (q.approvalAddress) {
+          console.log(chalk11.dim("  checking token approval..."));
+          await ensureAllowance(q.transactionRequest.to, q.approvalAddress, BigInt(q.fromAmount), walletName, q.transactionRequest.chainId);
+        }
+        console.log(chalk11.dim("  submitting transaction..."));
+        const result = await executeTransaction({
+          to: q.transactionRequest.to,
+          from: q.transactionRequest.from,
+          data: q.transactionRequest.data,
+          value: BigInt(q.transactionRequest.value ?? "0"),
+          gasLimit: q.transactionRequest.gasLimit ? BigInt(q.transactionRequest.gasLimit) : void 0,
+          chainId: q.transactionRequest.chainId
+        }, walletName, { type: "bridge", detail: `${args.fromToken} -> ${args.toToken}` });
+        return JSON.stringify({ success: true, txHash: result.txHash, chainId: result.chainId });
+      }
+      case "execute_swap": {
+        const walletName = args.walletName;
+        const wallets = listWallets();
+        const w = wallets.find((x) => x.name === walletName);
+        if (!w) return JSON.stringify({ error: `Wallet not found: ${walletName}` });
+        const q = await getSwapQuote({
+          chain: args.chain,
+          fromToken: args.fromToken,
+          toToken: args.toToken,
+          amount: args.amount,
+          fromAddress: w.address,
+          slippage: args.slippage ?? 5e-3
+        });
+        const summary = `  Swap ${args.fromToken} -> ${args.toToken} on ${args.chain}
+  Amount: ${q.fromAmount} | Receive: ${q.toAmount}
+  Gas: $${q.gasCostUSD}
+  Wallet: ${walletName} (${w.address})`;
+        const ok = await confirm(rl, summary);
+        if (!ok) return JSON.stringify({ cancelled: true, reason: "User did not confirm" });
+        if (q.approvalAddress) {
+          console.log(chalk11.dim("  checking token approval..."));
+          await ensureAllowance(q.transactionRequest.to, q.approvalAddress, BigInt(q.fromAmount), walletName, q.transactionRequest.chainId);
+        }
+        console.log(chalk11.dim("  submitting transaction..."));
+        const result = await executeTransaction({
+          to: q.transactionRequest.to,
+          from: q.transactionRequest.from,
+          data: q.transactionRequest.data,
+          value: BigInt(q.transactionRequest.value ?? "0"),
+          gasLimit: q.transactionRequest.gasLimit ? BigInt(q.transactionRequest.gasLimit) : void 0,
+          chainId: q.transactionRequest.chainId
+        }, walletName, { type: "swap", detail: `${args.fromToken} -> ${args.toToken} on ${args.chain}` });
+        return JSON.stringify({ success: true, txHash: result.txHash, chainId: result.chainId });
+      }
+      case "execute_earn": {
+        const walletName = args.walletName;
+        const wallets = listWallets();
+        const w = wallets.find((x) => x.name === walletName);
+        if (!w) return JSON.stringify({ error: `Wallet not found: ${walletName}` });
+        const q = await getEarnQuote({
+          protocol: args.protocol,
+          token: args.token,
+          amount: args.amount,
+          chain: args.chain,
+          fromAddress: w.address
+        });
+        const apy = q.estimatedApy != null ? `${(q.estimatedApy * 100).toFixed(2)}%` : "n/a";
+        const summary = `  Earn deposit into ${q.protocol}
+  Token: ${args.token} | Amount: ${q.fromAmount}
+  APY: ${apy} | Gas: $${q.gasCostUSD}
+  Wallet: ${walletName} (${w.address})`;
+        const ok = await confirm(rl, summary);
+        if (!ok) return JSON.stringify({ cancelled: true, reason: "User did not confirm" });
+        if (q.approvalAddress && args.token.toLowerCase() !== "eth") {
+          console.log(chalk11.dim("  checking token approval..."));
+          await ensureAllowance(q.transactionRequest.to, q.approvalAddress, BigInt(q.fromAmount), walletName, q.transactionRequest.chainId);
+        }
+        console.log(chalk11.dim("  submitting transaction..."));
+        const result = await executeTransaction({
+          to: q.transactionRequest.to,
+          from: q.transactionRequest.from,
+          data: q.transactionRequest.data,
+          value: BigInt(q.transactionRequest.value ?? "0"),
+          gasLimit: q.transactionRequest.gasLimit ? BigInt(q.transactionRequest.gasLimit) : void 0,
+          chainId: q.transactionRequest.chainId
+        }, walletName, { type: "earn", detail: `${args.token} -> ${q.protocol}` });
+        return JSON.stringify({ success: true, txHash: result.txHash, chainId: result.chainId });
+      }
       default:
         return JSON.stringify({ error: `Unknown tool: ${name}` });
     }
@@ -1589,41 +1889,60 @@ async function runAgent(config) {
     const userInput = await prompt();
     if (!userInput.trim()) continue;
     messages.push({ role: "user", content: userInput });
-    let response = await client.chat.completions.create({
-      model: config.model,
-      messages,
-      tools: AGENT_TOOLS,
-      tool_choice: "auto"
-    });
-    let message = response.choices[0].message;
-    while (message.tool_calls && message.tool_calls.length > 0) {
-      messages.push(message);
-      for (const call of message.tool_calls) {
-        if (call.type !== "function") continue;
-        const args = JSON.parse(call.function.arguments);
-        console.log(chalk11.dim(`  [tool] ${call.function.name}(${JSON.stringify(args)})`));
-        const result = await dispatchTool(call.function.name, args);
-        messages.push({ role: "tool", tool_call_id: call.id, content: result });
-      }
-      response = await client.chat.completions.create({
+    try {
+      let response = await client.chat.completions.create({
         model: config.model,
         messages,
         tools: AGENT_TOOLS,
         tool_choice: "auto"
       });
-      message = response.choices[0].message;
+      let message = response.choices[0].message;
+      let toolIterations = 0;
+      while (message.tool_calls && message.tool_calls.length > 0) {
+        if (++toolIterations > 10) {
+          console.log(chalk11.yellow("  too many tool calls \u2014 stopping loop"));
+          break;
+        }
+        messages.push(message);
+        for (const call2 of message.tool_calls) {
+          if (call2.type !== "function") continue;
+          const args = JSON.parse(call2.function.arguments);
+          console.log(chalk11.dim(`  [tool] ${call2.function.name}(${JSON.stringify(args)})`));
+          const result = await dispatchTool(call2.function.name, args, rl);
+          messages.push({ role: "tool", tool_call_id: call2.id, content: result });
+        }
+        response = await client.chat.completions.create({
+          model: config.model,
+          messages,
+          tools: AGENT_TOOLS,
+          tool_choice: "auto"
+        });
+        message = response.choices[0].message;
+      }
+      messages.push(message);
+      const formatted = formatAgentResponse(message.content ?? "");
+      console.log(chalk11.green("agent> ") + formatted);
+      console.log();
+    } catch (err) {
+      const msg = String(err);
+      messages.pop();
+      if (msg.includes("429")) {
+        console.log(chalk11.yellow("  rate limited \u2014 wait a moment and try again"));
+        console.log(chalk11.dim(`  or switch model: lifi-cli agent --model meta-llama/llama-3.3-70b-instruct:free`));
+      } else if (msg.includes("401") || msg.includes("403")) {
+        console.log(chalk11.red("  auth error \u2014 check your API key: lifi-cli agent --setup"));
+      } else {
+        console.log(chalk11.red("  error: ") + msg);
+      }
+      console.log();
     }
-    messages.push(message);
-    const formatted = formatAgentResponse(message.content ?? "");
-    console.log(chalk11.green("agent> ") + formatted);
-    console.log();
   }
 }
 
 // src/core/agent/setup.ts
 import chalk12 from "chalk";
 var PROVIDERS = {
-  openrouter: { baseUrl: "https://openrouter.ai/api/v1", defaultModel: "nvidia/nemotron-3-super-120b-a12b:free" },
+  openrouter: { baseUrl: "https://openrouter.ai/api/v1", defaultModel: "qwen/qwen3-next-80b-a3b-instruct:free" },
   openai: { baseUrl: "https://api.openai.com/v1", defaultModel: "gpt-4o" },
   ollama: { baseUrl: "http://localhost:11434/v1", defaultModel: "llama3" }
 };
@@ -1702,8 +2021,8 @@ async function runAgentSetup(rl) {
   }
   console.log(`  ${chalk12.dim("api key: ")} ${chalk12.green("*".repeat(Math.min(apiKey.length, 12)))}`);
   console.log();
-  const confirm = (await ask(rl, chalk12.bold(chalk12.blue("  save?")) + " \u203A [Y/n] ")).trim().toLowerCase();
-  if (confirm === "n" || confirm === "no") return null;
+  const confirm2 = (await ask(rl, chalk12.bold(chalk12.blue("  save?")) + " \u203A [Y/n] ")).trim().toLowerCase();
+  if (confirm2 === "n" || confirm2 === "no") return null;
   saveConfig({
     agentProvider: provider,
     agentModel: model,
@@ -1728,7 +2047,7 @@ function loadSavedAgentConfig() {
 
 // src/commands/agent.command.ts
 function agentCommand() {
-  return new Command10("agent").description("Start an interactive AI agent with LI.FI tools (powered by OpenRouter)").option("--model <model>", "model ID override", "nvidia/nemotron-3-super-120b-a12b:free").option("--system <prompt>", "override system prompt").option("--setup", "reconfigure agent provider and key").action(async (opts) => {
+  return new Command10("agent").description("Start an interactive AI agent with LI.FI tools (powered by OpenRouter)").option("--model <model>", "model ID override", "qwen/qwen3-next-80b-a3b-instruct:free").option("--system <prompt>", "override system prompt").option("--setup", "reconfigure agent provider and key").action(async (opts) => {
     try {
       let config = loadSavedAgentConfig();
       if (!config || opts.setup) {
@@ -1754,7 +2073,7 @@ function agentCommand() {
     } catch (err) {
       if (String(err).includes("OPENROUTER_API_KEY")) {
         console.error(chalk13.red("Error:"), String(err));
-        console.log(chalk13.dim("  Run: lifi agent --setup"));
+        console.log(chalk13.dim("  Run: lifi-cli agent --setup"));
       } else {
         console.error(chalk13.red("Error:"), String(err));
       }
@@ -1801,7 +2120,7 @@ function configCommand() {
 import { Command as Command12 } from "commander";
 function mcpCommand() {
   return new Command12("mcp").description("Start MCP server over stdio (for Claude Code, Cursor, etc.)").action(async () => {
-    const { startMcpServer } = await import("./server-GUJIVAWR.mjs");
+    const { startMcpServer } = await import("./server-YECAICX6.mjs");
     await startMcpServer();
   });
 }
@@ -2044,10 +2363,163 @@ function resetCommand() {
   });
 }
 
+// src/commands/telegram.command.ts
+import readline4 from "readline";
+import { Command as Command15 } from "commander";
+import chalk17 from "chalk";
+function ask3(rl, q) {
+  return new Promise((resolve) => rl.question(q, resolve));
+}
+async function readMasked2(prompt) {
+  return new Promise((resolve) => {
+    let buf = "";
+    process.stdin.setRawMode?.(true);
+    process.stdout.write(prompt);
+    const onData = (ch) => {
+      const c = ch.toString();
+      if (c === "\n" || c === "\r") {
+        process.stdin.removeListener("data", onData);
+        process.stdin.setRawMode?.(false);
+        process.stdout.write("\n");
+        resolve(buf.trim());
+        return;
+      }
+      if (c === "\x7F" || c === "\b") {
+        if (buf.length) {
+          buf = buf.slice(0, -1);
+          process.stdout.write("\b \b");
+        }
+        return;
+      }
+      if (c === "") process.exit(0);
+      buf += c;
+      process.stdout.write("*");
+    };
+    process.stdin.resume();
+    process.stdin.on("data", onData);
+  });
+}
+function telegramCommand() {
+  const tg = new Command15("telegram").description("Configure Telegram notifications");
+  tg.command("setup").description("Connect a Telegram bot for transaction notifications").action(async () => {
+    const rl = readline4.createInterface({ input: process.stdin, output: process.stdout });
+    console.log();
+    console.log(chalk17.cyan("  Telegram Setup"));
+    console.log(chalk17.dim("  " + "\u2500".repeat(44)));
+    console.log(chalk17.dim("  Need a bot token? Message @BotFather on Telegram."));
+    console.log(chalk17.dim("  Need your chat ID? Message @userinfobot on Telegram."));
+    console.log();
+    rl.pause();
+    const token = await readMasked2(chalk17.bold(chalk17.blue("  bot token")) + " \u203A ");
+    rl.resume();
+    if (!token) {
+      console.log(chalk17.red("  Bot token required."));
+      rl.close();
+      return;
+    }
+    let botName;
+    try {
+      const me = await getMe(token);
+      botName = `@${me.username}`;
+      console.log(chalk17.green(`  Bot verified: ${me.first_name} (${botName})`));
+    } catch (err) {
+      console.log(chalk17.red(`  Invalid token: ${String(err)}`));
+      rl.close();
+      return;
+    }
+    console.log();
+    console.log(chalk17.dim("  To get your chat ID, send any message to your bot first,"));
+    console.log(chalk17.dim("  then press Enter to auto-detect, or enter it manually."));
+    console.log();
+    const chatInput = (await ask3(rl, chalk17.bold(chalk17.blue("  chat ID")) + " \u203A [auto-detect] ")).trim();
+    let chatId = chatInput;
+    if (!chatId) {
+      try {
+        process.stdout.write(chalk17.dim("  Detecting..."));
+        const updates = await getUpdates(token);
+        const latest = updates.find((u) => u.message?.chat?.id);
+        if (latest?.message?.chat?.id) {
+          chatId = String(latest.message.chat.id);
+          process.stdout.write(chalk17.green(` found: ${chatId}
+`));
+        } else {
+          process.stdout.write(chalk17.yellow(" no messages found\n"));
+          console.log(chalk17.dim("  Send a message to your bot and run setup again, or enter the chat ID manually."));
+          rl.close();
+          return;
+        }
+      } catch (err) {
+        process.stdout.write(chalk17.red(` failed: ${String(err)}
+`));
+        rl.close();
+        return;
+      }
+    }
+    rl.close();
+    saveConfig({ telegramBotToken: token, telegramChatId: chatId });
+    try {
+      await sendMessage(
+        token,
+        chatId,
+        `<b>lifi-cli connected</b>
+
+You will receive notifications here after bridge, swap, and earn transactions are submitted.
+
+<i>Run: lifi-cli telegram test</i>`
+      );
+      console.log();
+      console.log(chalk17.green("  Saved. Confirmation message sent."));
+    } catch {
+      console.log();
+      console.log(chalk17.yellow("  Saved, but could not send confirmation. Check your chat ID."));
+    }
+    console.log();
+  });
+  tg.command("test").description("Send a test notification to your configured Telegram chat").action(async () => {
+    const token = getConfigValue("telegramBotToken");
+    const chatId = getConfigValue("telegramChatId");
+    if (!token || !chatId) {
+      console.error(chalk17.red("  Not configured. Run: lifi-cli telegram setup"));
+      process.exit(1);
+    }
+    try {
+      await sendMessage(
+        token,
+        chatId,
+        `<b>lifi-cli test</b>
+
+Notifications are working. You will be notified here after every transaction submitted with <code>--execute</code>.`
+      );
+      console.log(chalk17.green("  Test message sent."));
+    } catch (err) {
+      console.error(chalk17.red("  Failed:"), String(err));
+      process.exit(1);
+    }
+  });
+  tg.command("status").description("Show current Telegram configuration").action(() => {
+    const token = getConfigValue("telegramBotToken");
+    const chatId = getConfigValue("telegramChatId");
+    if (!token || !chatId) {
+      console.log(chalk17.dim("  Not configured. Run: lifi-cli telegram setup"));
+      return;
+    }
+    const masked = token.slice(0, 8) + "..." + token.slice(-4);
+    console.log();
+    console.log(`  ${chalk17.dim("bot token:")} ${masked}`);
+    console.log(`  ${chalk17.dim("chat ID:  ")} ${chatId}`);
+    console.log();
+  });
+  tg.command("disconnect").description("Remove Telegram configuration").action(() => {
+    saveConfig({ telegramBotToken: void 0, telegramChatId: void 0 });
+    console.log(chalk17.green("  Telegram disconnected."));
+  });
+  return tg;
+}
+
 // src/cli.ts
-var VERSION = "0.1.6";
-var program = new Command15();
-program.name("lifi").description("LI.FI CLI \u2014 bridge, swap, earn, and bet from the terminal.").version(VERSION).action(() => {
+var VERSION = "0.1.15";
+var program = new Command16();
+program.name("lifi-cli").description("LI.FI CLI \u2014 bridge, swap, earn, and bet from the terminal.").version(VERSION).action(() => {
   printClibanner(VERSION);
   program.help();
 });
@@ -2065,5 +2537,6 @@ program.addCommand(configCommand());
 program.addCommand(mcpCommand());
 program.addCommand(dryrunCommand());
 program.addCommand(resetCommand());
+program.addCommand(telegramCommand());
 program.parse();
 //# sourceMappingURL=cli.mjs.map

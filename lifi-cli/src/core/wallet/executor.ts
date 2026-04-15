@@ -1,6 +1,7 @@
 import { createWalletClient, createPublicClient, http, parseEther, erc20Abi } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { getWalletKey } from './wallet.js'
+import { notify, txNotification } from '../../api/telegram/notify.js'
 import type { TransactionRequest, TxHash, Address, ChainId } from '../../types/index.js'
 
 const PUBLIC_RPC: Record<number, string> = {
@@ -29,7 +30,8 @@ export interface ExecuteResult {
 
 export async function executeTransaction(
   tx: TransactionRequest,
-  walletName: string
+  walletName: string,
+  notifyOpts?: { type: 'bridge' | 'swap' | 'earn'; detail?: string }
 ): Promise<ExecuteResult> {
   const privateKey = await getWalletKey(walletName)
   const account = privateKeyToAccount(privateKey)
@@ -43,6 +45,10 @@ export async function executeTransaction(
     value: tx.value,
     gas: tx.gasLimit,
   })
+
+  if (notifyOpts) {
+    await notify(txNotification({ ...notifyOpts, txHash: hash, chainId: tx.chainId }))
+  }
 
   return { txHash: hash, chainId: tx.chainId }
 }

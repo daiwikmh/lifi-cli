@@ -11,7 +11,7 @@ export function swapCommand(): Command {
     .requiredOption('--from <token>', 'token to swap from')
     .requiredOption('--to <token>', 'token to swap to')
     .requiredOption('--amount <amount>', 'amount in token units')
-    .requiredOption('--wallet <name>', 'wallet name (from lifi wallet list)')
+    .requiredOption('--wallet <name>', 'wallet name (from lifi-cli wallet list)')
     .option('--chain <chain>', 'chain name or ID', resolveChain())
     .option('--slippage <slippage>', 'slippage tolerance', '0.005')
     .option('--execute', 'sign and submit the transaction')

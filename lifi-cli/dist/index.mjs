@@ -59,7 +59,9 @@ function getConfigValue(key) {
     agentProvider: "AGENT_PROVIDER",
     agentModel: "AGENT_MODEL",
     agentApiKey: "AGENT_API_KEY",
-    agentBaseUrl: "AGENT_BASE_URL"
+    agentBaseUrl: "AGENT_BASE_URL",
+    telegramBotToken: "TELEGRAM_BOT_TOKEN",
+    telegramChatId: "TELEGRAM_CHAT_ID"
   };
   const fromEnv = process.env[envMap[key]];
   if (fromEnv) return fromEnv;
@@ -214,7 +216,7 @@ async function resolveVault(protocol, chainId, token) {
   const { data: vaults } = await listVaults(params);
   if (!vaults.length) {
     throw new Error(
-      `No vault found for protocol "${protocol}" on chain ${chainId}. Run 'lifi earn vaults' to see available vaults.`
+      `No vault found for protocol "${protocol}" on chain ${chainId}. Run 'lifi-cli earn vaults' to see available vaults.`
     );
   }
   if (token) {
@@ -359,7 +361,7 @@ function printAgentBanner(model) {
   const lines = [
     "\u250C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510",
     "\u2502                                                         \u2502",
-    "\u2502   lifi agent                                            \u2502",
+    "\u2502   lifi-cli agent                                        \u2502",
     "\u2502   Your AI copilot for DeFi \xB7 powered by OpenRouter      \u2502",
     "\u2502                                                         \u2502",
     "\u2502   Tools:                                                \u2502",
@@ -386,7 +388,7 @@ function printAgentBanner(model) {
 import OpenAI from "openai";
 function createOpenRouterClient() {
   const apiKey = getConfigValue("openrouterApiKey");
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY not set. Run: lifi config set --openrouter-key <key>");
+  if (!apiKey) throw new Error("OPENROUTER_API_KEY not set. Run: lifi-cli config set --openrouter-key <key>");
   return new OpenAI({
     apiKey,
     baseURL: "https://openrouter.ai/api/v1",
@@ -479,7 +481,7 @@ function cleanLine(line) {
 import axios4 from "axios";
 function createKalshiClient() {
   const apiKey = getConfigValue("kalshiApiKey");
-  if (!apiKey) throw new Error("Kalshi API key required. Run: lifi config set --kalshi-key <key>  (get one at kalshi.com/api)");
+  if (!apiKey) throw new Error("Kalshi API key required. Run: lifi-cli config set --kalshi-key <key>  (get one at kalshi.com/api)");
   return axios4.create({
     baseURL: "https://trading-api.kalshi.com/trade-api/v2",
     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` }
@@ -557,6 +559,200 @@ async function getManifoldMarkets(query, limit = 20) {
   return markets.filter((m) => !m.isResolved && m.outcomeType === "BINARY").map(toMarket2);
 }
 
+// src/core/wallet/wallet.ts
+import fs3 from "fs";
+import path2 from "path";
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
+
+// src/core/wallet/keychain.ts
+import fs2 from "fs";
+import path from "path";
+import os from "os";
+var VAULT_DIR = path.join(os.homedir(), ".lifi-cli");
+var VAULT_FILE = path.join(VAULT_DIR, "secrets.json");
+function loadVault() {
+  if (!fs2.existsSync(VAULT_FILE)) return {};
+  try {
+    return JSON.parse(fs2.readFileSync(VAULT_FILE, "utf-8"));
+  } catch {
+    return {};
+  }
+}
+function saveVault(vault) {
+  fs2.mkdirSync(VAULT_DIR, { recursive: true, mode: 448 });
+  fs2.writeFileSync(VAULT_FILE, JSON.stringify(vault, null, 2), { mode: 384 });
+}
+async function storeSecret(account, secret) {
+  const vault = loadVault();
+  vault[account] = secret;
+  saveVault(vault);
+}
+async function getSecret(account) {
+  return loadVault()[account] ?? null;
+}
+
+// src/core/wallet/wallet.ts
+var WALLET_INDEX = path2.join(WALLETS_DIR, "index.json");
+function ensureWalletsDir() {
+  if (!fs3.existsSync(WALLETS_DIR)) fs3.mkdirSync(WALLETS_DIR, { recursive: true });
+}
+function readIndex() {
+  ensureWalletsDir();
+  if (!fs3.existsSync(WALLET_INDEX)) return [];
+  try {
+    return JSON.parse(fs3.readFileSync(WALLET_INDEX, "utf-8"));
+  } catch {
+    return [];
+  }
+}
+function writeIndex(wallets) {
+  ensureWalletsDir();
+  fs3.writeFileSync(WALLET_INDEX, JSON.stringify(wallets, null, 2));
+}
+async function createWallet(name) {
+  const privateKey = generatePrivateKey();
+  const account = privateKeyToAccount(privateKey);
+  const wallet = {
+    name,
+    address: account.address,
+    createdAt: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  await storeSecret(name, privateKey);
+  const index = readIndex();
+  index.push(wallet);
+  writeIndex(index);
+  return wallet;
+}
+async function importWallet(name, privateKey) {
+  const account = privateKeyToAccount(privateKey);
+  const wallet = {
+    name,
+    address: account.address,
+    createdAt: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  await storeSecret(name, privateKey);
+  const index = readIndex();
+  index.push(wallet);
+  writeIndex(index);
+  return wallet;
+}
+function listWallets() {
+  return readIndex();
+}
+async function getWalletKey(name) {
+  const key = await getSecret(name);
+  if (!key) throw new Error(`Wallet not found: ${name}`);
+  return key;
+}
+
+// src/core/wallet/executor.ts
+import { createWalletClient, createPublicClient, http, erc20Abi } from "viem";
+import { privateKeyToAccount as privateKeyToAccount2 } from "viem/accounts";
+
+// src/api/telegram/client.ts
+var BASE = "https://api.telegram.org/bot";
+async function call(token, method, body) {
+  const res = await fetch(`${BASE}${token}/${method}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.description ?? `Telegram API error on ${method}`);
+  return data.result;
+}
+async function sendMessage(token, chatId, text) {
+  await call(token, "sendMessage", { chat_id: chatId, text, parse_mode: "HTML" });
+}
+
+// src/api/telegram/notify.ts
+async function notify(text) {
+  const token = getConfigValue("telegramBotToken");
+  const chatId = getConfigValue("telegramChatId");
+  if (!token || !chatId) return;
+  try {
+    await sendMessage(token, chatId, text);
+  } catch {
+  }
+}
+function txNotification(opts) {
+  const labels = { bridge: "Bridge", swap: "Swap", earn: "Earn deposit" };
+  const chains = {
+    1: "Ethereum",
+    8453: "Base",
+    42161: "Arbitrum",
+    10: "Optimism",
+    137: "Polygon",
+    56: "BSC",
+    43114: "Avalanche"
+  };
+  const chain = chains[opts.chainId] ?? `Chain ${opts.chainId}`;
+  const lines = [
+    `<b>lifi-cli</b> \u2014 ${labels[opts.type]} submitted`,
+    opts.detail ? opts.detail : "",
+    `Chain: ${chain}`,
+    `Tx: <code>${opts.txHash}</code>`,
+    `<i>Run: lifi-cli status ${opts.txHash}</i>`
+  ].filter(Boolean);
+  return lines.join("\n");
+}
+
+// src/core/wallet/executor.ts
+var PUBLIC_RPC = {
+  1: "https://eth.llamarpc.com",
+  10: "https://mainnet.optimism.io",
+  56: "https://bsc-dataseed.binance.org",
+  137: "https://polygon-rpc.com",
+  8453: "https://mainnet.base.org",
+  42161: "https://arb1.arbitrum.io/rpc",
+  43114: "https://api.avax.network/ext/bc/C/rpc"
+};
+function getViemChain(chainId) {
+  return {
+    id: chainId,
+    name: `Chain ${chainId}`,
+    nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 },
+    rpcUrls: { default: { http: [PUBLIC_RPC[chainId] ?? `https://rpc.ankr.com/eth`] } }
+  };
+}
+async function executeTransaction(tx, walletName, notifyOpts) {
+  const privateKey = await getWalletKey(walletName);
+  const account = privateKeyToAccount2(privateKey);
+  const chain = getViemChain(tx.chainId);
+  const client3 = createWalletClient({ account, chain, transport: http() });
+  const hash = await client3.sendTransaction({
+    to: tx.to,
+    data: tx.data,
+    value: tx.value,
+    gas: tx.gasLimit
+  });
+  if (notifyOpts) {
+    await notify(txNotification({ ...notifyOpts, txHash: hash, chainId: tx.chainId }));
+  }
+  return { txHash: hash, chainId: tx.chainId };
+}
+async function ensureAllowance(tokenAddress, spender, amount, walletName, chainId) {
+  const privateKey = await getWalletKey(walletName);
+  const account = privateKeyToAccount2(privateKey);
+  const chain = getViemChain(chainId);
+  const publicClient = createPublicClient({ chain, transport: http() });
+  const walletClient = createWalletClient({ account, chain, transport: http() });
+  const allowance = await publicClient.readContract({
+    address: tokenAddress,
+    abi: erc20Abi,
+    functionName: "allowance",
+    args: [account.address, spender]
+  });
+  if (allowance >= amount) return null;
+  const hash = await walletClient.writeContract({
+    address: tokenAddress,
+    abi: erc20Abi,
+    functionName: "approve",
+    args: [spender, amount]
+  });
+  return hash;
+}
+
 // src/core/agent/tools.ts
 var AGENT_TOOLS = [
   {
@@ -622,7 +818,7 @@ var AGENT_TOOLS = [
       parameters: {
         type: "object",
         properties: {
-          chainId: { type: "number", description: "Filter by chain ID (optional)" },
+          chainId: { type: "number", description: "Filter by chain ID as a number (e.g. 8453 for Base, 1 for Ethereum, 42161 for Arbitrum, 10 for Optimism)" },
           protocol: { type: "string", description: "Filter by protocol slug (optional)" },
           underlyingToken: { type: "string", description: "Filter by underlying token symbol (optional)" },
           category: { type: "string", enum: ["vault", "lending", "staking", "yield"], description: "Filter by category (optional)" },
@@ -770,20 +966,133 @@ var AGENT_TOOLS = [
         }
       }
     }
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_wallet_address",
+      description: "Get the public address of a saved wallet by name",
+      parameters: {
+        type: "object",
+        properties: {
+          walletName: { type: "string", description: "Wallet name (from lifi-cli wallet list)" }
+        },
+        required: ["walletName"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "execute_bridge",
+      description: "Execute a cross-chain bridge transaction using a saved wallet. Always show the quote details and ask user to confirm before calling this.",
+      parameters: {
+        type: "object",
+        properties: {
+          fromChain: { type: "string", description: "Source chain name or ID" },
+          toChain: { type: "string", description: "Destination chain name or ID" },
+          fromToken: { type: "string", description: "Token to send" },
+          toToken: { type: "string", description: "Token to receive" },
+          amount: { type: "string", description: "Amount in smallest unit" },
+          walletName: { type: "string", description: "Saved wallet name to sign with" },
+          slippage: { type: "number", description: "Slippage tolerance (default 0.005)" }
+        },
+        required: ["fromChain", "toChain", "fromToken", "toToken", "amount", "walletName"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "execute_swap",
+      description: "Execute a token swap on a single chain using a saved wallet. Always show the quote details and ask user to confirm before calling this.",
+      parameters: {
+        type: "object",
+        properties: {
+          chain: { type: "string", description: "Chain name or ID" },
+          fromToken: { type: "string", description: "Token to swap from" },
+          toToken: { type: "string", description: "Token to swap to" },
+          amount: { type: "string", description: "Amount in smallest unit" },
+          walletName: { type: "string", description: "Saved wallet name to sign with" },
+          slippage: { type: "number", description: "Slippage tolerance (default 0.005)" }
+        },
+        required: ["chain", "fromToken", "toToken", "amount", "walletName"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "execute_earn",
+      description: "Execute a yield vault deposit using a saved wallet. Always show the quote details and ask user to confirm before calling this.",
+      parameters: {
+        type: "object",
+        properties: {
+          protocol: { type: "string", description: "Protocol slug or vault address (0x...)" },
+          token: { type: "string", description: "Token to deposit" },
+          amount: { type: "string", description: "Amount in smallest unit" },
+          chain: { type: "string", description: "Chain name or ID" },
+          walletName: { type: "string", description: "Saved wallet name to sign with" }
+        },
+        required: ["protocol", "token", "amount", "chain", "walletName"]
+      }
+    }
   }
 ];
 
 // src/core/agent/agent.ts
-var DEFAULT_SYSTEM = `You are a DeFi assistant with access to LI.FI tools for bridging, swapping, earning yield, and checking prediction markets on Polymarket, Kalshi, and Manifold. Help users move and grow their crypto. Always confirm transaction details before executing. Present amounts in human-readable form.
+var DEFAULT_SYSTEM = `You are lifi-cli agent \u2014 a terminal DeFi assistant. You ONLY discuss DeFi, crypto, and the tools listed below. Do not respond to unrelated topics.
 
-IMPORTANT FORMATTING RULES \u2014 follow these exactly:
-- Plain text only. No markdown of any kind.
-- No asterisks (* or **), no underscores for emphasis, no pound signs (#) for headers.
-- No emoji characters.
-- For tables, use pipe-separated markdown table format (| col | col |) so the terminal can render them \u2014 no other table format.
-- No bullet points with asterisks. Use a dash (-) for lists if needed.
-- Keep responses concise and scannable.`;
-async function dispatchTool(name, args) {
+YOUR TOOLS (call these functions to answer user requests):
+- get_wallet_address: resolve a wallet name to its public address (walletName)
+- get_bridge_quote: get a cross-chain bridge quote (fromChain, toChain, fromToken, toToken, amount, fromAddress)
+- get_swap_quote: get a same-chain token swap quote (chain, fromToken, toToken, amount, fromAddress)
+- get_earn_quote: get a yield deposit quote via LI.FI Composer (protocol, token, amount, chain, fromAddress)
+- list_earn_vaults: browse yield vaults (chainId as number e.g. 8453, protocol slug, underlyingToken symbol, limit \u2014 omit filters you don't need)
+- list_earn_protocols: list all supported yield protocols (no args)
+- get_earn_portfolio: show active yield positions for a wallet (userAddress)
+- list_markets: list Polymarket prediction markets (query, limit)
+- list_kalshi_markets: list Kalshi prediction markets (query, limit)
+- list_manifold_markets: list Manifold prediction markets (query, limit)
+- dryrun_bridge: simulate a bridge without submitting
+- dryrun_swap: simulate a swap without submitting
+- dryrun_earn: simulate an earn deposit with projected APY and yield estimates
+- get_tx_status: check cross-chain transaction status (txHash, fromChain, toChain)
+- execute_bridge: sign and submit a bridge transaction (fromChain, toChain, fromToken, toToken, amount, walletName)
+- execute_swap: sign and submit a swap transaction (chain, fromToken, toToken, amount, walletName)
+- execute_earn: sign and submit a yield deposit (protocol, token, amount, chain, walletName)
+
+EXECUTION RULES \u2014 mandatory, never skip:
+1. Before calling execute_*, always call the matching quote tool first and show the user the result.
+2. After showing the quote, explicitly ask the user to confirm with "yes" before calling execute_*.
+3. Only call execute_* after the user has confirmed. The terminal will also prompt for confirmation.
+4. Never guess wallet names \u2014 call get_wallet_address first if you need the address.
+
+RULES:
+- Always call a tool before answering data questions. Never make up token prices, APYs, or market data.
+- When asked "what tools do you have", list the tools above exactly.
+- Present token amounts in human-readable form (e.g. "100 USDC" not "100000000").
+
+FORMATTING \u2014 follow exactly, no exceptions:
+- Plain text only. No markdown.
+- No asterisks, no underscores, no pound signs.
+- No emoji.
+- Tables: pipe format only (| col | col |) \u2014 the terminal renders these.
+- Lists: use dash (-) not asterisk.
+- Concise. Every line must earn its place.`;
+async function confirm(rl, summary) {
+  return new Promise((resolve) => {
+    console.log();
+    console.log(chalk2.yellow("  -- confirm transaction --"));
+    console.log(chalk2.dim(summary));
+    console.log();
+    rl.question(chalk2.bold('  Type "yes" to proceed: '), (ans) => {
+      console.log();
+      resolve(ans.trim().toLowerCase() === "yes");
+    });
+  });
+}
+async function dispatchTool(name, args, rl) {
   try {
     switch (name) {
       case "get_bridge_quote": {
@@ -795,11 +1104,29 @@ async function dispatchTool(name, args) {
         return JSON.stringify(q, null, 2);
       }
       case "get_earn_quote": {
-        const q = await getEarnQuote(args);
+        const earnArgs = { ...args };
+        const addr = earnArgs.fromAddress;
+        if (!addr || addr === "wallet_address" || addr === "your_wallet_address") {
+          earnArgs.fromAddress = "0x0000000000000000000000000000000000000001";
+        }
+        const q = await getEarnQuote(earnArgs);
         return JSON.stringify(q, null, 2);
       }
       case "list_earn_vaults": {
-        const result = await fetchVaults(args);
+        const vaultArgs = { ...args };
+        if (typeof vaultArgs.chainId === "string") {
+          const resolved = CHAIN_IDS[vaultArgs.chainId.toLowerCase()];
+          if (resolved) vaultArgs.chainId = resolved;
+          else {
+            const n = parseInt(vaultArgs.chainId);
+            if (!isNaN(n)) vaultArgs.chainId = n;
+          }
+        }
+        for (const k of Object.keys(vaultArgs)) {
+          if (vaultArgs[k] === "" || vaultArgs[k] === null) delete vaultArgs[k];
+        }
+        delete vaultArgs.category;
+        const result = await fetchVaults(vaultArgs);
         return JSON.stringify(result, null, 2);
       }
       case "list_earn_protocols": {
@@ -877,6 +1204,116 @@ async function dispatchTool(name, args) {
         const status = await getStatus(args.txHash, void 0, args.fromChain, args.toChain);
         return JSON.stringify(status, null, 2);
       }
+      case "get_wallet_address": {
+        const wallets = listWallets();
+        const w = wallets.find((x) => x.name === args.walletName);
+        if (!w) return JSON.stringify({ error: `Wallet not found: ${args.walletName}. Run lifi-cli wallet list to see saved wallets.` });
+        return JSON.stringify({ name: w.name, address: w.address });
+      }
+      case "execute_bridge": {
+        const walletName = args.walletName;
+        const wallets = listWallets();
+        const w = wallets.find((x) => x.name === walletName);
+        if (!w) return JSON.stringify({ error: `Wallet not found: ${walletName}` });
+        const q = await getBridgeQuote({
+          fromChain: args.fromChain,
+          toChain: args.toChain,
+          fromToken: args.fromToken,
+          toToken: args.toToken,
+          amount: args.amount,
+          fromAddress: w.address,
+          slippage: args.slippage ?? 5e-3
+        });
+        const summary = `  Bridge ${args.fromToken} -> ${args.toToken}
+  From: ${args.fromChain} -> ${args.toChain}
+  Amount: ${q.fromAmount} | Receive: ${q.toAmount}
+  Gas: $${q.gasCostUSD} | Duration: ${q.estimatedDuration}s
+  Wallet: ${walletName} (${w.address})`;
+        const ok = await confirm(rl, summary);
+        if (!ok) return JSON.stringify({ cancelled: true, reason: "User did not confirm" });
+        if (q.approvalAddress) {
+          console.log(chalk2.dim("  checking token approval..."));
+          await ensureAllowance(q.transactionRequest.to, q.approvalAddress, BigInt(q.fromAmount), walletName, q.transactionRequest.chainId);
+        }
+        console.log(chalk2.dim("  submitting transaction..."));
+        const result = await executeTransaction({
+          to: q.transactionRequest.to,
+          from: q.transactionRequest.from,
+          data: q.transactionRequest.data,
+          value: BigInt(q.transactionRequest.value ?? "0"),
+          gasLimit: q.transactionRequest.gasLimit ? BigInt(q.transactionRequest.gasLimit) : void 0,
+          chainId: q.transactionRequest.chainId
+        }, walletName, { type: "bridge", detail: `${args.fromToken} -> ${args.toToken}` });
+        return JSON.stringify({ success: true, txHash: result.txHash, chainId: result.chainId });
+      }
+      case "execute_swap": {
+        const walletName = args.walletName;
+        const wallets = listWallets();
+        const w = wallets.find((x) => x.name === walletName);
+        if (!w) return JSON.stringify({ error: `Wallet not found: ${walletName}` });
+        const q = await getSwapQuote({
+          chain: args.chain,
+          fromToken: args.fromToken,
+          toToken: args.toToken,
+          amount: args.amount,
+          fromAddress: w.address,
+          slippage: args.slippage ?? 5e-3
+        });
+        const summary = `  Swap ${args.fromToken} -> ${args.toToken} on ${args.chain}
+  Amount: ${q.fromAmount} | Receive: ${q.toAmount}
+  Gas: $${q.gasCostUSD}
+  Wallet: ${walletName} (${w.address})`;
+        const ok = await confirm(rl, summary);
+        if (!ok) return JSON.stringify({ cancelled: true, reason: "User did not confirm" });
+        if (q.approvalAddress) {
+          console.log(chalk2.dim("  checking token approval..."));
+          await ensureAllowance(q.transactionRequest.to, q.approvalAddress, BigInt(q.fromAmount), walletName, q.transactionRequest.chainId);
+        }
+        console.log(chalk2.dim("  submitting transaction..."));
+        const result = await executeTransaction({
+          to: q.transactionRequest.to,
+          from: q.transactionRequest.from,
+          data: q.transactionRequest.data,
+          value: BigInt(q.transactionRequest.value ?? "0"),
+          gasLimit: q.transactionRequest.gasLimit ? BigInt(q.transactionRequest.gasLimit) : void 0,
+          chainId: q.transactionRequest.chainId
+        }, walletName, { type: "swap", detail: `${args.fromToken} -> ${args.toToken} on ${args.chain}` });
+        return JSON.stringify({ success: true, txHash: result.txHash, chainId: result.chainId });
+      }
+      case "execute_earn": {
+        const walletName = args.walletName;
+        const wallets = listWallets();
+        const w = wallets.find((x) => x.name === walletName);
+        if (!w) return JSON.stringify({ error: `Wallet not found: ${walletName}` });
+        const q = await getEarnQuote({
+          protocol: args.protocol,
+          token: args.token,
+          amount: args.amount,
+          chain: args.chain,
+          fromAddress: w.address
+        });
+        const apy = q.estimatedApy != null ? `${(q.estimatedApy * 100).toFixed(2)}%` : "n/a";
+        const summary = `  Earn deposit into ${q.protocol}
+  Token: ${args.token} | Amount: ${q.fromAmount}
+  APY: ${apy} | Gas: $${q.gasCostUSD}
+  Wallet: ${walletName} (${w.address})`;
+        const ok = await confirm(rl, summary);
+        if (!ok) return JSON.stringify({ cancelled: true, reason: "User did not confirm" });
+        if (q.approvalAddress && args.token.toLowerCase() !== "eth") {
+          console.log(chalk2.dim("  checking token approval..."));
+          await ensureAllowance(q.transactionRequest.to, q.approvalAddress, BigInt(q.fromAmount), walletName, q.transactionRequest.chainId);
+        }
+        console.log(chalk2.dim("  submitting transaction..."));
+        const result = await executeTransaction({
+          to: q.transactionRequest.to,
+          from: q.transactionRequest.from,
+          data: q.transactionRequest.data,
+          value: BigInt(q.transactionRequest.value ?? "0"),
+          gasLimit: q.transactionRequest.gasLimit ? BigInt(q.transactionRequest.gasLimit) : void 0,
+          chainId: q.transactionRequest.chainId
+        }, walletName, { type: "earn", detail: `${args.token} -> ${q.protocol}` });
+        return JSON.stringify({ success: true, txHash: result.txHash, chainId: result.chainId });
+      }
       default:
         return JSON.stringify({ error: `Unknown tool: ${name}` });
     }
@@ -896,176 +1333,54 @@ async function runAgent(config) {
     const userInput = await prompt();
     if (!userInput.trim()) continue;
     messages.push({ role: "user", content: userInput });
-    let response = await client3.chat.completions.create({
-      model: config.model,
-      messages,
-      tools: AGENT_TOOLS,
-      tool_choice: "auto"
-    });
-    let message = response.choices[0].message;
-    while (message.tool_calls && message.tool_calls.length > 0) {
-      messages.push(message);
-      for (const call of message.tool_calls) {
-        if (call.type !== "function") continue;
-        const args = JSON.parse(call.function.arguments);
-        console.log(chalk2.dim(`  [tool] ${call.function.name}(${JSON.stringify(args)})`));
-        const result = await dispatchTool(call.function.name, args);
-        messages.push({ role: "tool", tool_call_id: call.id, content: result });
-      }
-      response = await client3.chat.completions.create({
+    try {
+      let response = await client3.chat.completions.create({
         model: config.model,
         messages,
         tools: AGENT_TOOLS,
         tool_choice: "auto"
       });
-      message = response.choices[0].message;
+      let message = response.choices[0].message;
+      let toolIterations = 0;
+      while (message.tool_calls && message.tool_calls.length > 0) {
+        if (++toolIterations > 10) {
+          console.log(chalk2.yellow("  too many tool calls \u2014 stopping loop"));
+          break;
+        }
+        messages.push(message);
+        for (const call2 of message.tool_calls) {
+          if (call2.type !== "function") continue;
+          const args = JSON.parse(call2.function.arguments);
+          console.log(chalk2.dim(`  [tool] ${call2.function.name}(${JSON.stringify(args)})`));
+          const result = await dispatchTool(call2.function.name, args, rl);
+          messages.push({ role: "tool", tool_call_id: call2.id, content: result });
+        }
+        response = await client3.chat.completions.create({
+          model: config.model,
+          messages,
+          tools: AGENT_TOOLS,
+          tool_choice: "auto"
+        });
+        message = response.choices[0].message;
+      }
+      messages.push(message);
+      const formatted = formatAgentResponse(message.content ?? "");
+      console.log(chalk2.green("agent> ") + formatted);
+      console.log();
+    } catch (err) {
+      const msg = String(err);
+      messages.pop();
+      if (msg.includes("429")) {
+        console.log(chalk2.yellow("  rate limited \u2014 wait a moment and try again"));
+        console.log(chalk2.dim(`  or switch model: lifi-cli agent --model meta-llama/llama-3.3-70b-instruct:free`));
+      } else if (msg.includes("401") || msg.includes("403")) {
+        console.log(chalk2.red("  auth error \u2014 check your API key: lifi-cli agent --setup"));
+      } else {
+        console.log(chalk2.red("  error: ") + msg);
+      }
+      console.log();
     }
-    messages.push(message);
-    const formatted = formatAgentResponse(message.content ?? "");
-    console.log(chalk2.green("agent> ") + formatted);
-    console.log();
   }
-}
-
-// src/core/wallet/wallet.ts
-import fs3 from "fs";
-import path2 from "path";
-import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
-
-// src/core/wallet/keychain.ts
-import fs2 from "fs";
-import path from "path";
-import os from "os";
-var VAULT_DIR = path.join(os.homedir(), ".lifi-cli");
-var VAULT_FILE = path.join(VAULT_DIR, "secrets.json");
-function loadVault() {
-  if (!fs2.existsSync(VAULT_FILE)) return {};
-  try {
-    return JSON.parse(fs2.readFileSync(VAULT_FILE, "utf-8"));
-  } catch {
-    return {};
-  }
-}
-function saveVault(vault) {
-  fs2.mkdirSync(VAULT_DIR, { recursive: true, mode: 448 });
-  fs2.writeFileSync(VAULT_FILE, JSON.stringify(vault, null, 2), { mode: 384 });
-}
-async function storeSecret(account, secret) {
-  const vault = loadVault();
-  vault[account] = secret;
-  saveVault(vault);
-}
-async function getSecret(account) {
-  return loadVault()[account] ?? null;
-}
-
-// src/core/wallet/wallet.ts
-var WALLET_INDEX = path2.join(WALLETS_DIR, "index.json");
-function ensureWalletsDir() {
-  if (!fs3.existsSync(WALLETS_DIR)) fs3.mkdirSync(WALLETS_DIR, { recursive: true });
-}
-function readIndex() {
-  ensureWalletsDir();
-  if (!fs3.existsSync(WALLET_INDEX)) return [];
-  try {
-    return JSON.parse(fs3.readFileSync(WALLET_INDEX, "utf-8"));
-  } catch {
-    return [];
-  }
-}
-function writeIndex(wallets) {
-  ensureWalletsDir();
-  fs3.writeFileSync(WALLET_INDEX, JSON.stringify(wallets, null, 2));
-}
-async function createWallet(name) {
-  const privateKey = generatePrivateKey();
-  const account = privateKeyToAccount(privateKey);
-  const wallet = {
-    name,
-    address: account.address,
-    createdAt: (/* @__PURE__ */ new Date()).toISOString()
-  };
-  await storeSecret(name, privateKey);
-  const index = readIndex();
-  index.push(wallet);
-  writeIndex(index);
-  return wallet;
-}
-async function importWallet(name, privateKey) {
-  const account = privateKeyToAccount(privateKey);
-  const wallet = {
-    name,
-    address: account.address,
-    createdAt: (/* @__PURE__ */ new Date()).toISOString()
-  };
-  await storeSecret(name, privateKey);
-  const index = readIndex();
-  index.push(wallet);
-  writeIndex(index);
-  return wallet;
-}
-function listWallets() {
-  return readIndex();
-}
-async function getWalletKey(name) {
-  const key = await getSecret(name);
-  if (!key) throw new Error(`Wallet not found: ${name}`);
-  return key;
-}
-
-// src/core/wallet/executor.ts
-import { createWalletClient, createPublicClient, http, erc20Abi } from "viem";
-import { privateKeyToAccount as privateKeyToAccount2 } from "viem/accounts";
-var PUBLIC_RPC = {
-  1: "https://eth.llamarpc.com",
-  10: "https://mainnet.optimism.io",
-  56: "https://bsc-dataseed.binance.org",
-  137: "https://polygon-rpc.com",
-  8453: "https://mainnet.base.org",
-  42161: "https://arb1.arbitrum.io/rpc",
-  43114: "https://api.avax.network/ext/bc/C/rpc"
-};
-function getViemChain(chainId) {
-  return {
-    id: chainId,
-    name: `Chain ${chainId}`,
-    nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 },
-    rpcUrls: { default: { http: [PUBLIC_RPC[chainId] ?? `https://rpc.ankr.com/eth`] } }
-  };
-}
-async function executeTransaction(tx, walletName) {
-  const privateKey = await getWalletKey(walletName);
-  const account = privateKeyToAccount2(privateKey);
-  const chain = getViemChain(tx.chainId);
-  const client3 = createWalletClient({ account, chain, transport: http() });
-  const hash = await client3.sendTransaction({
-    to: tx.to,
-    data: tx.data,
-    value: tx.value,
-    gas: tx.gasLimit
-  });
-  return { txHash: hash, chainId: tx.chainId };
-}
-async function ensureAllowance(tokenAddress, spender, amount, walletName, chainId) {
-  const privateKey = await getWalletKey(walletName);
-  const account = privateKeyToAccount2(privateKey);
-  const chain = getViemChain(chainId);
-  const publicClient = createPublicClient({ chain, transport: http() });
-  const walletClient = createWalletClient({ account, chain, transport: http() });
-  const allowance = await publicClient.readContract({
-    address: tokenAddress,
-    abi: erc20Abi,
-    functionName: "allowance",
-    args: [account.address, spender]
-  });
-  if (allowance >= amount) return null;
-  const hash = await walletClient.writeContract({
-    address: tokenAddress,
-    abi: erc20Abi,
-    functionName: "approve",
-    args: [spender, amount]
-  });
-  return hash;
 }
 export {
   AGENT_TOOLS,

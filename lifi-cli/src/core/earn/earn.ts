@@ -28,7 +28,7 @@ async function resolveVault(protocol: string, chainId: number, token?: string): 
   if (!vaults.length) {
     throw new Error(
       `No vault found for protocol "${protocol}" on chain ${chainId}. ` +
-      `Run 'lifi earn vaults' to see available vaults.`
+      `Run 'lifi-cli earn vaults' to see available vaults.`
     )
   }
 

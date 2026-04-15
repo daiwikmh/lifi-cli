@@ -13,6 +13,8 @@ interface Config {
   agentModel?: string
   agentApiKey?: string
   agentBaseUrl?: string
+  telegramBotToken?: string
+  telegramChatId?: string
 }
 
 function ensureConfigDir(): void {
@@ -50,6 +52,8 @@ export function getConfigValue<K extends keyof Config>(key: K): Config[K] {
     agentModel: 'AGENT_MODEL',
     agentApiKey: 'AGENT_API_KEY',
     agentBaseUrl: 'AGENT_BASE_URL',
+    telegramBotToken: 'TELEGRAM_BOT_TOKEN',
+    telegramChatId: 'TELEGRAM_CHAT_ID',
   }
   const fromEnv = process.env[envMap[key]]
   if (fromEnv) return fromEnv as Config[K]

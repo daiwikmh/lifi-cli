@@ -295,7 +295,10 @@ interface ExecuteResult {
     txHash: TxHash;
     chainId: ChainId;
 }
-declare function executeTransaction(tx: TransactionRequest, walletName: string): Promise<ExecuteResult>;
+declare function executeTransaction(tx: TransactionRequest, walletName: string, notifyOpts?: {
+    type: 'bridge' | 'swap' | 'earn';
+    detail?: string;
+}): Promise<ExecuteResult>;
 declare function ensureAllowance(tokenAddress: Address, spender: Address, amount: bigint, walletName: string, chainId: ChainId): Promise<TxHash | null>;
 
 interface Config {
@@ -309,6 +312,8 @@ interface Config {
     agentModel?: string;
     agentApiKey?: string;
     agentBaseUrl?: string;
+    telegramBotToken?: string;
+    telegramChatId?: string;
 }
 declare function loadConfig(): Config;
 declare function saveConfig(updates: Partial<Config>): void;

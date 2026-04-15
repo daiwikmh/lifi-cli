@@ -59,7 +59,7 @@ export function walletCommand(): Command {
         return
       }
       if (wallets.length === 0) {
-        console.log(chalk.yellow('No wallets found. Run: lifi wallet create --name <name>'))
+        console.log(chalk.yellow('No wallets found. Run: lifi-cli wallet create --name <name>'))
         return
       }
       console.log(makeTable(

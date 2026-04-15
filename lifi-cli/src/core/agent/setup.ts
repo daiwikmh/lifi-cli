@@ -4,7 +4,7 @@ import { saveConfig, getConfigValue } from '../../config/index.js'
 import type { AgentConfig } from './agent.types.js'
 
 const PROVIDERS: Record<string, { baseUrl: string; defaultModel: string }> = {
-  openrouter: { baseUrl: 'https://openrouter.ai/api/v1', defaultModel: 'nvidia/nemotron-3-super-120b-a12b:free' },
+  openrouter: { baseUrl: 'https://openrouter.ai/api/v1', defaultModel: 'qwen/qwen3-next-80b-a3b-instruct:free' },
   openai:     { baseUrl: 'https://api.openai.com/v1',    defaultModel: 'gpt-4o' },
   ollama:     { baseUrl: 'http://localhost:11434/v1',     defaultModel: 'llama3' },
 }

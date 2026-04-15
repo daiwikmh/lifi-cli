@@ -21,7 +21,7 @@ export function printClibanner(version: string): void {
     chalk.bold('mcp')
   )
   console.log()
-  console.log(chalk.dim(`  v${version}  ·  Run lifi --help to see all commands`))
+  console.log(chalk.dim(`  v${version}  ·  Run lifi-cli --help to see all commands`))
   console.log()
 }
 
@@ -29,7 +29,7 @@ export function printAgentBanner(model: string): void {
   const lines = [
     '┌─────────────────────────────────────────────────────────┐',
     '│                                                         │',
-    '│   lifi agent                                            │',
+    '│   lifi-cli agent                                        │',
     '│   Your AI copilot for DeFi · powered by OpenRouter      │',
     '│                                                         │',
     '│   Tools:                                                │',

@@ -12,7 +12,7 @@ export function bridgeCommand(): Command {
     .requiredOption('--from-chain <chain>', 'source chain (name or ID)')
     .requiredOption('--to-chain <chain>', 'destination chain (name or ID)')
     .requiredOption('--amount <amount>', 'amount in token units (e.g. 100 for 100 USDC)')
-    .requiredOption('--wallet <name>', 'wallet name (from lifi wallet list)')
+    .requiredOption('--wallet <name>', 'wallet name (from lifi-cli wallet list)')
     .option('--slippage <slippage>', 'slippage tolerance (e.g. 0.005 for 0.5%)', '0.005')
     .option('--execute', 'sign and submit the transaction')
     .option('--json', 'output as JSON')
@@ -93,7 +93,7 @@ export function bridgeCommand(): Command {
 
         console.log(chalk.green(`\nTransaction submitted!`))
         console.log(`Hash: ${chalk.cyan(result.txHash)}`)
-        console.log(chalk.dim(`Run: lifi status ${result.txHash} to track progress`))
+        console.log(chalk.dim(`Run: lifi-cli status ${result.txHash} to track progress`))
       } catch (err) {
         console.error(chalk.red('Error:'), String(err))
         process.exit(1)

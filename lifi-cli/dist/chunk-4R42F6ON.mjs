@@ -54,7 +54,9 @@ function getConfigValue(key) {
     agentProvider: "AGENT_PROVIDER",
     agentModel: "AGENT_MODEL",
     agentApiKey: "AGENT_API_KEY",
-    agentBaseUrl: "AGENT_BASE_URL"
+    agentBaseUrl: "AGENT_BASE_URL",
+    telegramBotToken: "TELEGRAM_BOT_TOKEN",
+    telegramChatId: "TELEGRAM_CHAT_ID"
   };
   const fromEnv = process.env[envMap[key]];
   if (fromEnv) return fromEnv;
@@ -214,7 +216,7 @@ async function resolveVault(protocol, chainId, token) {
   const { data: vaults } = await listVaults(params);
   if (!vaults.length) {
     throw new Error(
-      `No vault found for protocol "${protocol}" on chain ${chainId}. Run 'lifi earn vaults' to see available vaults.`
+      `No vault found for protocol "${protocol}" on chain ${chainId}. Run 'lifi-cli earn vaults' to see available vaults.`
     );
   }
   if (token) {
@@ -369,4 +371,4 @@ export {
   getMarkets,
   getMarketBySlug
 };
-//# sourceMappingURL=chunk-KUNM2NGH.mjs.map
+//# sourceMappingURL=chunk-4R42F6ON.mjs.map

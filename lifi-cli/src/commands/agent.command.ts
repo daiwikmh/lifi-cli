@@ -7,7 +7,7 @@ import { runAgentSetup, loadSavedAgentConfig } from '../core/agent/setup.js'
 export function agentCommand(): Command {
   return new Command('agent')
     .description('Start an interactive AI agent with LI.FI tools (powered by OpenRouter)')
-    .option('--model <model>', 'model ID override', 'nvidia/nemotron-3-super-120b-a12b:free')
+    .option('--model <model>', 'model ID override', 'qwen/qwen3-next-80b-a3b-instruct:free')
     .option('--system <prompt>', 'override system prompt')
     .option('--setup', 'reconfigure agent provider and key')
     .action(async (opts) => {
@@ -39,7 +39,7 @@ export function agentCommand(): Command {
       } catch (err) {
         if (String(err).includes('OPENROUTER_API_KEY')) {
           console.error(chalk.red('Error:'), String(err))
-          console.log(chalk.dim('  Run: lifi agent --setup'))
+          console.log(chalk.dim('  Run: lifi-cli agent --setup'))
         } else {
           console.error(chalk.red('Error:'), String(err))
         }
